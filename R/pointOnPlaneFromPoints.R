@@ -16,6 +16,12 @@ pointOnPlaneFromPoints <- function(p, n, p1, d1, p2, d2, compare=NULL){
 
 	# FIND INTERSECTION POINTS OF CIRCLES
 	iC <- intersectCircles(circle1, circle2)
+	
+	# IF CIRCLES ARE PERFECTLY OVERLAPPING, RETURN CURRENT POINT
+	if(iC[['type']] == 'coincident') return(list(p))
+
+	# IF ONE CIRCLE IS INSIDE THE OTHER, NO OVERLAP, RETURN NA
+	if(iC[['type']] == 'inside') return(list(NA))
 
 	# IF MORE THAN ONE POINT IS RETURNED AND COMPARE POINT PROVIDED, FIND CLOSEST POINT TO COMPARE
 	if(length(iC) > 1 && !is.null(compare)){

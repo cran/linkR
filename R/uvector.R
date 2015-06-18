@@ -1,5 +1,7 @@
 uvector <- function(v){
 
+	if(sum(is.na(v)) > 0) return(v)
+
 	if(is.vector(v)){
 		d <- sqrt(sum(v^2))
 		if(d == 0){return(c(0,0,0))}

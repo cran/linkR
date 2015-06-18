@@ -1,173 +1,17 @@
-animateLinkage <- function(linkage, t, input.link=NULL){
-
-	if(class(linkage) == 'linkage_system'){
-	
-		# CREATE ANIMATED LINKAGE SYSTEM
-		linkage_r <- list()
-		class(linkage_r) <- 'linkage_system'
-		
-		# COPY OVER SYSTEM LEVEL STRUCTURES
-		points <- linkage$points
-		link.names <- linkage$link.names
-		link.assoc <- linkage$link.assoc
-		points.assoc <- linkage$points.assoc
-		
-		# GET NUMBER OF LINKAGES
-		linkage_ct <- sum(names(linkage) == "")
-		
-		# CHECK THAT INPUT LINK IS SPECIFIED
-		if(is.null(input.link)) stop("For input of linkage system into animateLinkage, input.link must be defined.")
-
-		# CREATE INPUT PARAMETER LIST
-		input_parameters <- list()
-		
-		# INITIAL INPUT PARAMETERS
-		input_parameters[[input.link]] <- t
-		
-		# RECORD IF LINKAGE HAS BEEN ANIMATED
-		animated <- rep(FALSE, linkage_ct)
-
-		n <- 0
-		while(n < 5){
-
-			for(i in 1:linkage_ct){
-
-				# CHECK IF LINKAGE HAS ALREADY BEEN ANIMATED
-				if(animated[i]) next
-
-				# CHECK THAT NUMBER OF AVAILABLE INPUT PARAMETERS MATCHES DEGREES OF FREEDOM
-				if(sum(linkage[[i]][['link.names']] %in% names(input_parameters)) < linkage[[i]][['dof']]) next
-				
-				# WHICH OF THE INPUT PARAMETERS WILL BE USED
-				ip_idx <- which(names(input_parameters) %in% linkage[[i]][['link.names']])
-
-				# NAME OF INPUT PARAMETER LINK
-				ip_name <- names(input_parameters)[ip_idx]
-
-				if(linkage[[i]][['dof']] == 1){
-
-					ip_idx <- ip_idx[1]
-					ip_name <- ip_name[1]
-
-					# FIND THE POSITION OF THE INPUT LINK IN THE LINKAGE CHAIN
-
-					# CORRESPONDING LINK NUMBER IN LINKAGE TO BE ANIMATED
-					input_link_num <- which(linkage[[i]][['link.names']] == ip_name)[1]
-
-					if(input_link_num == 1){
-
-						# INPUT IS FIRST LINK - ANIMATE LINKAGE
-						linkage_anim <- animateLinkage(linkage[[i]], input_parameters[[ip_name]])
-					
-						# INDICES OF LAST LINK JOINTS
-						p_idx <- c(nrow(linkage[[i]][['joints']]), (nrow(linkage[[i]][['joints']])-1))
-
-						# GET LINK NAME
-						olink_name <- linkage[[i]][['link.names']][nrow(linkage[[i]][['joints']])-1]
-
-					}else if(input_link_num == nrow(linkage[[i]][['joints']])-1){
-
-						# INPUT IS OUTPUT LINK - REVERSE LINKAGE
-						reverse_linkage <- reverseLinkage(linkage[[i]])
-
-						# ANIMATE LINKAGE
-						linkage_anim <- animateLinkage(reverse_linkage, input_parameters[[ip_name]])
-
-						# INDICES OF FIRST LINK JOINTS (LINKAGE HAS BEEN REVERSED)
-						p_idx <- c(nrow(linkage[[i]][['joints']]), (nrow(linkage[[i]][['joints']])-1))
-					
-						# GET LINK NAME
-						olink_name <- linkage[[i]][['link.names']][1]
-					}
-
-					# GET COORDINATES OF OTHER LINK TO SAVE AS POTENTIAL SUBSEQUENT INPUT PARAMETER
-					# GET INITIAL OUTLINK VECTOR
-					p1_init <- linkage_anim$joints.initial[p_idx[1], ]
-					p2_init <- linkage_anim$joints.initial[p_idx[2], ]
-				
-					# GET SUBSEQUENT OUTLINK VECTOR POSITIONS
-					p1_change <- matrix(linkage_anim$joints[p_idx[1], ,], ncol=3, byrow=T)
-					p2_change <- matrix(linkage_anim$joints[p_idx[2], , ], ncol=3, byrow=T)
-
-					# GET CONSTRAINT VECTOR FOR LINK
-					cvec <- linkage_anim$joints.cvec[p_idx[1], ]
-
-					# GET T
-					if(linkage[[i]][['joints.type']][nrow(linkage[[i]][['joints']])] == "R"){
-
-						t_prev <- rep(NA, nrow(p2_change))
-
-						for(rn in 1:nrow(p1_change)){
-
-							# GET ANGLE BETWEEN INITIAL VECTOR AND ROTATED VECTOR
-							a_vector <- avectors(p2_init-p1_init, p2_change[rn, ]-p1_change[rn, ])
-						
-							# FIND NEW POSITION FOR POSITIVE AND NEGATIVE ANGLE
-							new_pos_p <- rotateBody(m=p2_init, p=p1_init, v=cvec, a=a_vector)
-							new_pos_n <- rotateBody(m=p2_init, p=p1_init, v=cvec, a=-a_vector)
-
-							# MAKE SURE THAT ANGLE HAS THE CORRECT SIGN
-							if(abs(distPointToPoint(new_pos_p, p2_change[rn, ])) > abs(distPointToPoint(new_pos_n, p2_change[rn, ]))) a_vector <- -a_vector
-
-							t_prev[rn] <- a_vector
-						}
-					}
-
-					# SAVE AS INPUT PARAMETERS
-					input_parameters[[olink_name]] <- t_prev
-
-				}else if(linkage[[i]][['dof']] == 2){
-
-					if(linkage[[i]][['link.names']][1] != ip_name[1] || linkage[[i]][['link.names']][3] != ip_name[2])
-						stop("Temp fix error - not yet able to work with all 2 DOF linkages.")
-
-					# TEMPORARY FIX - TO START ALLOWING 2 DOF LINKAGES
-					linkage_anim <- animateLinkage(linkage[[i]], 
-						t=cbind(input_parameters[[ip_name[1]]], input_parameters[[ip_name[2]]]))
-				}
-				
-				# SAVE ANIMATED LINKAGE
-				linkage_r[[i]] <- linkage_anim
-		
-				if(!is.null(linkage_anim$points)){
-
-					# MAKE SYSTEM LEVEL POINTS AN ARRAY IF MATRIX
-					if(length(dim(points)) == 2)
-						points <- array(points, dim=c(dim(points), dim(linkage_anim$points)[3]), dimnames=list(rownames(points), NULL, NULL))
-
-					# ONLY COPY POINTS FROM LINKS IN LINKAGE
-					to_copy <- unlist(linkage_anim$points.assoc[linkage_anim$link.names])
-					
-					# COPY ANIMATED POINTS INTO SYSTEM LEVEL POINT ARRAY
-					points[rownames(linkage_anim$points[to_copy, , ]), , ] <- linkage_anim$points[to_copy, , ]
-				}
-				
-				#print(input_parameters)
-				#cat('-----------\n')
-
-				animated[i] <- TRUE
-			}
-
-			n <- n + 1
-		}
-		
-		linkage_r$points <- points
-		linkage_r$link.names <- link.names
-		linkage_r$link.assoc <- link.assoc
-		linkage_r$points.assoc <- points.assoc
-
-		return(linkage_r)
-	}
-	
-	check.inter.joint.dist <- TRUE
-	check.inter.point.dist <- TRUE
+animateLinkage <- function(linkage, input.param, input.joint=NULL,
+	check.inter.joint.dist = TRUE, check.joint.cons = TRUE, check.inter.point.dist = TRUE){
 
 	# CHECK THAT NUMBER OF INPUTS MATCHES LINKAGE DEGREES OF FREEDOM
-	if(linkage$dof == 2 && is.vector(t)) 
-		stop("Input 't' is a vector. For a linkage with two degrees of freedom, 't' must be two column matrix, where each column corresponds to each input link.")
 
-	# CONVERT T INTO MATRIX FOR CONSISTENCY ACROSS LINKAGES WITH DIFFERING DEGREES OF FREEDOM
-	if(!is.matrix(t)) t <- matrix(t, nrow=length(t), ncol=1)
+	# CONVERT T INTO LIST OF MATRICES FOR CONSISTENCY ACROSS LINKAGES WITH DIFFERING DEGREES OF FREEDOM
+	if(class(input.param) == 'numeric') input.param <- list(matrix(input.param, nrow=length(input.param), ncol=1))
+	if(class(input.param) == 'matrix') input.param <- list(input.param)
+	if(class(input.param) == 'list'){
+		for(i in 1:length(input.param)) if(is.vector(input.param[[i]])) input.param[[i]] <- matrix(input.param[[i]], nrow=length(input.param[[i]]), ncol=1)
+	}
+
+	# GET NUMBER OF ITERATIONS
+	num_iter <- nrow(input.param[[1]])
 
 	# LINKAGE ARRAY FOR POINTS IF DEFINED
 	if(!is.null(linkage$points)){
@@ -177,194 +21,301 @@ animateLinkage <- function(linkage, t, input.link=NULL){
 	}
 
 	# CONVERT ARRAY TO MATRIX - COPY OVER LAST DIMENSION OF ARRAY
-	if(length(dim(linkage$joints)) == 3) linkage$joints <- linkage$joints[, , dim(linkage$joints)[3]]
+	if(length(dim(linkage$joint.coor)) == 3) linkage$joint.coor <- linkage$joint.coor[, , dim(linkage$joint.coor)[3]]
 
 	# NEW LINKAGE OBJECT
 	linkage_r <- linkage
 
-	# COPY ORIGINAL JOINT POSITIONS
-	linkage_r$joints.initial <- linkage_r$joints
+	# COPY JOINT CONSTRAINTS
+	joint_cons <- linkage$joint.cons
 
 	# COPY OVER JOINTS AND POINTS
-	linkage_r$joints <- array(linkage$joints, dim=c(nrow(linkage$joints), ncol(linkage$joints), nrow(t)), dimnames=list(rownames(linkage$joints), colnames(linkage$joints), NULL))
-	if(!is.null(linkage$points)) linkage_r$points <- array(linkage$points, dim=c(nrow(linkage$points), ncol(linkage$points), nrow(t)), dimnames=list(rownames(linkage$points), colnames(linkage$points), NULL))
+	linkage_r$joint.coor <- array(linkage$joint.coor, dim=c(nrow(linkage$joint.coor), ncol(linkage$joint.coor), num_iter), dimnames=list(rownames(linkage$joint.coor), colnames(linkage$joint.coor), NULL))
+	if(!is.null(linkage$points)) linkage_r$points <- array(linkage$points, dim=c(nrow(linkage$points), ncol(linkage$points), num_iter), dimnames=list(rownames(linkage$points), colnames(linkage$points), NULL))
 
-	# GET LINK LENGTHS
-	link_len <- distPointToPoint(linkage$joints)
-
-	# SET LINK NAMES
-	if(!is.null(linkage$link.names)){link_names <- linkage$link.names}else{link_names <- names(linkage$points.assoc)}
+	# ADD MATRIX FOR SAVING POINTS AT EACH ITERATION
+	if(!is.null(linkage$lar.cons)){
+		lar_points <- setNames(vector("list", length(linkage$link.names)), linkage$link.names)
+		for(i in 1:length(linkage$lar.cons)) if(!is.null(linkage$lar.cons[[names(linkage$lar.cons)[i]]]$point)) lar_points[[names(linkage$lar.cons)[i]]] <- matrix(linkage$lar.cons[[names(linkage$lar.cons)[i]]]$point, nrow=num_iter, ncol=3, byrow=TRUE)
+	}
 	
-	# ADD END JOINT TYPE FOR INTERNAL CONSISTENCY
-	linkage$joints.type <- c(linkage$joints.type, "E")
+	# COPY LINK COORDINATE SYSTEMS
+	for(link_name in linkage$link.names){
+		linkage_r$link.lcs[[link_name]] <- array(linkage_r$link.lcs[[link_name]],
+			dim=c(nrow(linkage_r$link.lcs[[link_name]]), ncol(linkage_r$link.lcs[[link_name]]), num_iter))
+	}
 	
-	for(i in 1:nrow(t)){
+	# IF NULL, SET DEFAULT INPUT JOINT
+	if(is.null(input.joint) && length(input.param) == 1) input.joint <- 1
 
-		for(j in 1:nrow(linkage$joints)){
+	# IF NON-NUMERIC, MATCH UP TO INDICES IN JOINT COORDINATE MATRIX
+	if(!is.numeric(input.joint[1])) input.joint <- c(1:nrow(linkage$joint.coor))[rownames(linkage$joint.coor) %in% input.joint]
+
+	# SET INPUT PARAMETERS AS PATHS AT START OF JOINT PATHS
+	input_paths <- list()
+	for(i in 1:length(input.joint)) input_paths[[length(input_paths)+1]] <- input.joint[i]
+	for(i in 1:length(linkage$joint.paths)) input_paths[[length(input_paths)+1]] <- linkage$joint.paths[[i]]
+	linkage$joint.paths <- input_paths
+
+	# IDENTIFY GROUND JOINTS
+	## FIX: REPLACE WITH linkage$ground.joints??
+	joints_ground <- unique(c(linkage$joint.links[linkage$joint.links[, 1] == 0, c('Joint1', 'Joint2')]))
+	joints_ground <- joints_ground[joints_ground > 0]
 		
-			# SET INPUT LINK NUMBER
-			curr.input <- 1
-		
-			# TRANSLATE FIRST JOINT WITH INPUT ALONG CONSTRAINT VECTOR
-			if(j == 1 && linkage$joints.type[j] == 'L')
-				linkage_r$joints[j, , i] <- linkage_r$joints[j, , i] + t[i, curr.input] * linkage$joints.cvec[j, ]
+	#### SET CUSTOM PATHS FOR DEBUGGING
+	#linkage$joint.paths <- list(c(11, 12, 1), c(2,3,4), c(5,6,7), c(13,14,15))
 
-			# ROTATE SECOND JOINT ABOUT FIRST
-			if(j == 1 && linkage$joints.type[j] == 'R')
-				linkage_r$joints[j+1, , i] <- rotateBody(m=linkage_r$joints[j+1, , i], p=linkage_r$joints[j, , i], 
-					v=linkage$joints.cvec[j, ], a=t[i, curr.input])
+	# GET LINK LENGTHS FOR PATHS
+	path_joint_lengths <- list()
+	for(i in 1:length(linkage$joint.paths)){
 
-			# JOINT MOVES ALONG LINE
-			if(j > 1 && linkage$joints.type[j] == 'L'){
-			
-				# GET POINT FOR COMPARISON FROM PREVIOUS ITERATION
-				if(i == 1){point_compare <- linkage_r$joints[j, , i]}else{point_compare <- linkage_r$joints[j, , i-1]}
+		# CREATE VECTOR FOR LENGTHS
+		path_joint_lengths[[i]] <- rep(NA, length(linkage$joint.paths[[i]])-1)
 
-				# FIND POSITION OF SLIDING JOINT
-				linkage_r$joints[j, , i] <- intersectSphereLine(c=linkage_r$joints[j-1, , i], r=link_len[j-1], 
-					x=linkage_r$joints[j, , i], l=linkage$joints.cvec[j, ], point.compare=point_compare)
-			}
+		# GET INTERJOINT LENGTHS FROM JOINTS LINK MATRIX
+		for(j in 1:(length(linkage$joint.paths[[i]])-1)){
+			path_joint_lengths[[i]][j] <- sqrt(sum((linkage$joint.coor[linkage$joint.paths[[i]][j], ] - 
+				linkage$joint.coor[linkage$joint.paths[[i]][j+1], ])^2))
+		}
+	}
 
-			# IF PREVIOUS JOINT IS R, ROTATE ABOUT PREVIOUSLY ROTATED JOINT
-			if(j > 1 && linkage$joints.type[j-1] == 'U' && linkage$joints.type[j] == 'R' && linkage$joints.type[j+1] == 'R'){
+	# GET LINKAGE SIZE
+	linkage_size <- mean(sqrt(rowSums((linkage$joint.coor - matrix(colMeans(linkage$joint.coor), nrow=nrow(linkage$joint.coor), ncol=3, byrow=TRUE))^2)))
 
-				# NEXT INPUT LINK
-				curr.input <- curr.input + 1
-				
-				# ROTATE INPUT LINK AND PRECEDING R JOINT
-				linkage_r$joints[j:(j-1), , i] <- rotateBody(m=linkage$joints[j:(j-1), ], p=linkage$joints[j+1, ], 
-					v=linkage$joints.cvec[j+1, ], a=t[i, curr.input])
-			}
-
-			# POINT IN PLANE AT DISTANCE FROM ROTATED JOINT
-			if(j > 1 && linkage$joints.type[j] == 'P' && linkage$joints.type[j+1] == 'U' && linkage$joints.type[j+2] == 'R'){
-			
-				# NEXT INPUT LINK
-				curr.input <- curr.input + 1
-				
-				# ROTATE INPUT LINK AND PRECEDING R JOINT
-				linkage_r$joints[j+1, , i] <- rotateBody(m=linkage$joints[j+1, ], p=linkage$joints[j+2, ], 
-					v=linkage$joints.cvec[j+2, ], a=t[i, curr.input])
-
-				# GET POINT FOR COMPARISON FROM PREVIOUS ITERATION
-				if(i == 1){compare <- linkage$joints[j, ]}else{compare <- linkage_r$joints[j, , i-1]}
-
-				# SOLVE FOR POINT POSITION IN PLANE
-				linkage_r$joints[j, , i] <- pointOnPlaneFromPoints(p=linkage_r$joints[j, , i], n=linkage$joints.cvec[j, ], 
-					p1=linkage_r$joints[j-1, , i], d1=distPointToPoint(linkage$joints[c(j,j-1), ]), 
-					p2=linkage_r$joints[j+1, , i], d2=distPointToPoint(linkage$joints[c(j,j+1), ]),
-					compare=compare)[[1]]
-			}
-
-			# JOINT ROTATES
-			if(j > 1 && linkage$joints.type[j] == 'R' && linkage$joints.type[j-1] == 'U' && linkage$joints.type[j-2] %in% c('U', 'L')){
-
-				# GET POINT FOR COMPARISON FROM PREVIOUS ITERATION
-				if(i == 1){point_compare <- linkage$joints[j-1, ]}else{point_compare <- linkage_r$joints[j-1, , i-1]}
-
-				# DEFINE CIRCLE FOR OUTPUT LINK
-				output_circle <- defineCircle(center=linkage_r$joints[j, , i], nvector=linkage$joints.cvec[j, ], 
-					point_on_radius=linkage_r$joints[j-1, , i])
-
-				# FIND ANGLE ON CIRCLE AT DISTANCE FROM TRANSMISSION LINK JOINT
-				output_link_t <- angleOnCircleFromPoint(circle=output_circle, dist=link_len[j-2], 
-					P=linkage_r$joints[j-2, , i], point_compare=point_compare)
-
-				# FIND CORRESPONDING POINT ON CIRCLE
-				output_joint_r <- circlePoint(circle=output_circle, T=output_link_t)
-
-				# FIND ROTATION ANGLE FOR OUTLINK
-				t_transform <- avectors(linkage_r$joints[j-1, , i] - output_circle$C, output_joint_r - output_circle$C)
+	for(itr in 1:num_iter){
 	
-				# ROTATE TRANSMISSION LINK-OUTPUT JOINT
-				joint_npos <- rotateBody(m=linkage_r$joints[j-1, , i], p=linkage_r$joints[j, , i],
-					v=linkage$joints.cvec[j, ], a=t_transform)
+		# SET PREVIOUS ITERATION
+		if(itr == 1){prev_itr <- 1}else{prev_itr <- itr-1}
+	
+		# CLEAR UNKNOWN JOINTS VECTOR
+		joints_unknown <- setNames(rep("rtp", length(linkage$joint.types)), rownames(linkage$joint.coor))
 
-				# CHECK THAT ROTATION WAS IN THE RIGHT DIRECTION
-				if(abs(distPointToPoint(linkage_r$joints[j-2, , i], joint_npos) - link_len[j-2]) > 1e-4){
-					t_transform <- -t_transform
-					joint_npos <- rotateBody(m=linkage_r$joints[j-1, , i], p=linkage_r$joints[j, , i], 
-						v=linkage$joints.cvec[j, ], a=t_transform)
+		# CLEAR TRANSFORMED POINTS VECTOR
+		link_points_tform <- setNames(rep(FALSE, linkage$num.links), linkage$link.names)
+
+		# SET L AND P JOINTS AS UNKNOWN POSITION
+		joints_unknown[linkage$joint.types %in% c("L", "P")] <- 't'
+
+		# SET S JOINTS AS UNKNOWN POSITION
+		joints_unknown[linkage$joint.types %in% c("S")] <- 'p'
+
+		# SET NON-GROUND R JOINTS AS UNKNOWN POSITION AND ROTATION
+		joints_unknown[linkage$joint.types %in% c("R")] <- 'rp'
+
+		# SET R GROUND JOINTS AS UNKNOWN ROTATION
+		joints_unknown[joints_ground[linkage$joint.types[joints_ground] %in% c("R")]] <- 'r'
+
+		# SET S GROUND JOINTS AS KNOWN ROTATION AND POSITION
+		joints_unknown[joints_ground[linkage$joint.types[joints_ground] %in% c("S")]] <- ''
+
+		# GET POINT FOR COMPARISON FROM PREVIOUS ITERATION
+		if(itr == 1){joints.prev <- linkage$joint.coor}else{joints.prev <- linkage_r$joint.coor[, , itr-1]}
+
+		#print(joints_unknown)
+
+		path_cycle <- 1
+		while(path_cycle < 4){
+
+			unknown_changed <- FALSE
+
+			for(i in 1:length(linkage$joint.paths)){
+		
+				# SET PATH
+				path <- linkage$joint.paths[[i]]
+				
+				# SKIP IF ALL JOINTS ARE KNOWN
+				if(sum(joints_unknown[path] == '') == length(path)) next
+
+				#cat('A');print(paste(linkage$joint.types[path], '(', path, ')', joints_unknown[path], collapse='', sep=''))
+				
+				#if(paste0(path, collapse='') == '234') next
+				#if(paste0(path, collapse='') == '432') next
+				#if(paste0(path, collapse='') == '765') next
+				#if(paste0(path, collapse='') == '567') next
+
+				solve_chain <- NULL
+				if(length(path) == 1){
+
+					# CHECK THAT INPUT JOINT IS CONNECTED TO GROUND
+					if(!path[1] %in% joints_ground)
+						stop(paste0("linkR currently only supports input parameters for joints associated with ground (", paste(rownames(linkage$joint.coor)[joints_ground], collapse=', '), ")."))
+
+					# PATH WITH SINGLE JOINT IS INPUT PARAMETER
+					if(linkage$joint.types[path[1]] == 'R') solve_chain <- list(list('r' = input.param[[i]][itr, ]))
+					if(linkage$joint.types[path[1]] == 'L') solve_chain <- list(list('t' = uvector(linkage$joint.cons[[path[1]]])*input.param[[i]][itr, 1]))
+					if(linkage$joint.types[path[1]] == 'P') solve_chain <- list(list('t' = input.param[[i]][itr, ]))
+					
+				}else{
+
+					# SOLVE POSITION
+					solve_chain <- solveKinematicChain(joint.types=linkage$joint.types[path], joints.unknown=joints_unknown[path], 
+						joint.coor=linkage_r$joint.coor[path, , itr], joint.cons=joint_cons[path], 
+						joints.dist=path_joint_lengths[[i]], joints.prev=joints.prev[path, ])
 				}
 
-				linkage_r$joints[j-1, , i] <- joint_npos
+				# CHECK IF CHAIN COULD NOT BE SOLVED
+				if(is.null(solve_chain)) next
+
+				#cat('A');print(paste(linkage$joint.types[path], '(', path, ')', joints_unknown[path], collapse='', sep=''))
+				#print(solve_chain)
+
+				# APPLY SOLVE TO JOINTS AND POINTS
+				apply_solve_chain <- applySolveChain(linkage=linkage, linkage_r=linkage_r, solve_chain=solve_chain, 
+					path=path, itr=itr, joint_cons=joint_cons,
+					joints_unknown=joints_unknown, link_points_tform=link_points_tform)
+
+				linkage_r <- apply_solve_chain$linkage_r
+				joint_cons <- apply_solve_chain$joint_cons
+				unknown_changed <- apply_solve_chain$unknown_changed
+				joints_unknown <- apply_solve_chain$joints_unknown
+				link_points_tform <- apply_solve_chain$link_points_tform
 			}
 			
-			# TRANSFORM POINTS ASSOCIATED WITH EACH LINK
-			if(!is.null(linkage_r$points)){
+			#cat('\n')
+
+			path_cycle <- path_cycle + 1
+
+			if(!unknown_changed) break
+		}
+
+		# TRANSFORM POINTS ASSOCIATED WITH UNTRANSFORMED LINKS, SKIPPING GROUND
+		for(i in 2:length(link_points_tform)){
+
+			# SKIP ALREADY TRANSFORMED LINK POINTS
+			if(link_points_tform[i]) next
 			
-				# SKIP FIRST STEP, MAKE SURE BOTH POINTS OF LINK HAVE BEEN TRANSFORMED
-				if(j == 1) next
+			# GET POINTS ASSOCIATED WITH LINK
+			points_t <- linkage$point.assoc[[linkage$link.names[i]]]
+		
+			# FIND JOINTS ASSOCIATED WITH LINK
+			joints_assoc <- unique(c(linkage$joint.links[linkage$joint.links[, 'Link.idx'] == i-1, c('Joint1', 'Joint2')]))
 
-				# USE INPUT T FOR INPUT LINK
-				if(j == 2) t_transform <- t[i, curr.input]
-
-				# ROTATE LINK ABOUT FIRST JOINT (RU)
-				if(paste(linkage$joints.type[(j-1):j], collapse="") %in% c('RU')){
-					linkage_r$points[linkage$points.assoc[[link_names[j-1]]], , i] <- rotateBody(
-						m=linkage$points[linkage$points.assoc[[link_names[j-1]]], ], 
-						p=linkage$joints[j-1, ], v=linkage$joints.cvec[j-1, ], a=t_transform)
-				}
-
-				# COPY TRANSFORMATION (LL, UL)
-				if(paste(linkage$joints.type[(j-1):j], collapse="") %in% c('LL', 'UL')){
-					linkage_r$points[linkage$points.assoc[[link_names[j-1]]], , i] <- copyTransformation(
-						m1=linkage$joints[c(j-1,j), ], m2=linkage_r$joints[c(j-1,j), , i], 
-						mn=linkage$points[linkage$points.assoc[[link_names[j-1]]], ])
-				}
-
-				# COPY TRANSFORMATION (LU_, UU_, LP_, PU_)
-				if(paste(linkage$joints.type[(j-2):(j-1)], collapse="") %in% c('LU', 'UU', 'LP', 'PU')){
-					linkage_r$points[linkage$points.assoc[[link_names[j-2]]], , i] <- copyTransformation(
-						m1=linkage$joints[c(j-2,j-1), ], m2=linkage_r$joints[c(j-2,j-1), , i], 
-						mn=linkage$points[linkage$points.assoc[[link_names[j-2]]], ])
-				}
-
-				# ROTATE LINK ABOUT SECOND JOINT WITH INPUT ROTATION (URR)
-				if(paste(linkage$joints.type[(j-1):(j+1)], collapse="") %in% c('URR')){
-
-					linkage_r$points[linkage$points.assoc[[link_names[j]]], , i] <- rotateBody(
-						m=linkage$points[linkage$points.assoc[[link_names[j]]], ], 
-						p=linkage$joints[j+1, ], v=linkage$joints.cvec[j+1, ], a=t[i, curr.input])
-
-					linkage_r$points[linkage$points.assoc[[link_names[j-1]]], , i] <- rotateBody(
-						m=linkage$points[linkage$points.assoc[[link_names[j-1]]], ], 
-						p=linkage$joints[j+1, ], v=linkage$joints.cvec[j+1, ], a=t[i, curr.input])
-				}
+			# SKIP IF NO ASSOCIATED POINTS
+			if(is.null(points_t)) next
+			
+			# GET JOINTS FOR COPYING TRANSFORMATION
+			if(length(joints_assoc) > 3){
 				
+				### FIX
+				# SELECT JOINTS IF GREATER THAN THREE (EG TO AVOID COINCIDENT POINTS)
+				joints_assoc <- joints_assoc[1:3]
+			}
 
-				# ROTATE LINK ABOUT SECOND JOINT (UR)
-				if(paste(linkage$joints.type[(j-1):j], collapse="") %in% c('UR')){
-					linkage_r$points[linkage$points.assoc[[link_names[j-1]]], , i] <- rotateBody(
-						m=linkage_r$points[linkage$points.assoc[[link_names[j-1]]], , i], 
-						p=linkage_r$joints[j, , i], v=linkage$joints.cvec[j, ], a=t_transform)
-				}
+			# MAKE SURE THAT JOINTS ARE NOT COINCIDENT
+			if(sum(abs(linkage$joint.coor[joints_assoc, ] - matrix(colMeans(linkage$joint.coor[joints_assoc, ]), nrow=length(joints_assoc), ncol=3, byrow=TRUE))) < 1e-7){
+				joints_assoc <- joints_assoc[1]
+				#stop(paste0("Joints used to copy transformation to points associated with '", linkage$link.names[i], "' are coincident"))
+			}
+
+			# TRANSFORM LONG-AXIS ROTATION CONSTRAINTS
+			if(!is.null(linkage_r$lar.cons[[linkage$link.names[i]]]) && length(joints_assoc) == 2){
+
+				# COPY TRANSFORMATION
+				mr <- copyTransformation(m1=linkage$joint.coor[joints_assoc, ], 
+					m2=linkage_r$joint.coor[joints_assoc, , itr], 
+					mn=rbind(linkage$points[points_t, ], linkage$link.lcs[[linkage$link.names[i]]], linkage$lar.cons[[linkage$link.names[i]]]$point.i),
+					lar.cons=linkage_r$lar.cons[[linkage$link.names[i]]], 
+					lar.compare=lar_points[[linkage$link.names[i]]][prev_itr, ])
+
+				# ADD TRANSFORMED POINTS
+				linkage_r$points[points_t, , itr] <- mr[1:(nrow(mr)-5), ]
+
+				# ADD TRANSFORMED ASSOCIATED LOCAL COORDINATE SYSTEM
+				linkage_r$link.lcs[[linkage$link.names[i]]][, , itr] <- mr[(nrow(mr)-4):(nrow(mr)-1), ]
+				
+				# ADD LONG-AXIS ROTATION REFERENCE POINT
+				lar_points[[linkage$link.names[i]]][itr, ] <- mr[nrow(mr), ]
+
+			}else{
+
+				# COPY TRANSFORMATION
+				linkage_r$points[points_t, , itr] <- copyTransformation(m1=linkage$joint.coor[joints_assoc, ], 
+					m2=linkage_r$joint.coor[joints_assoc, , itr], mn=linkage$points[points_t, ])
+
+				# TRANSFORM ASSOCIATED LOCAL COORDINATE SYSTEMS
+				linkage_r$link.lcs[[linkage$link.names[i]]][, , itr] <- copyTransformation(m1=linkage$joint.coor[joints_assoc, ], 
+					m2=linkage_r$joint.coor[joints_assoc, , itr], mn=linkage$link.lcs[[linkage$link.names[i]]])
 			}
 		}
 	}
 
 	# CHECK THAT DISTANCES WITHIN LINKS HAVE NOT CHANGED
-	if(check.inter.joint.dist && dim(linkage_r$joints)[3] > 1){
-	
-		linkage_size <- distPointToPoint(colMeans(linkage$joints), linkage$joints)
-		t_size <- mean(colMeans(abs(t)))
-		
-		for(i in 1:(dim(linkage_r$joints)[1]-1)){
+	if(check.inter.joint.dist && dim(linkage_r$joint.coor)[3] > 1){
 
-			# GET DISTANCES BETWEEN CONSECUTIVE JOINT POSITIONS OVER TIME
-			d <- distPointToPoint(t(linkage_r$joints[i, , ]), t(linkage_r$joints[i+1, , ]))
+		# EACH PAIR OF JOINED JOINTS
+		for(i in 1:nrow(linkage$joint.links)){
+
+			# SKIP LINKS TO GROUND JOINTS
+			if(linkage$joint.links[i, 'Joint1'] == 0 || linkage$joint.links[i, 'Joint2'] == 0) next
+
+			# GET JOINT PAIR POSITIONS
+			joint1 <- linkage_r$joint.coor[linkage$joint.links[i, 'Joint1'], , ]
+			joint2 <- linkage_r$joint.coor[linkage$joint.links[i, 'Joint2'], , ]
+
+			### FIX!
+			# FOR NOW SKIP TRANSLATION ALONG ROTATING LINK
+			if(sum(c('R', 'L') %in% linkage_r$joint.types[c(linkage$joint.links[i, 'Joint1'], linkage$joint.links[i, 'Joint2'])]) == 2) next
+
+			# COMPARE TO INITIAL JOINT PAIR POSITIONS
+			d <- abs(linkage$joint.links[i, 'Length'] - sqrt(colSums((joint1 - joint2)^2)))
+			#cat(linkage$joint.links[i, 'Joint1'], '-', linkage$joint.links[i, 'Joint2'], '\n')
+			#print(d)
 
 			# ALL DISTANCES CONSTANT
-			if(abs(sd(d) / t_size) < 1e-7 && abs(sd(d) / linkage_size) < 1e-7) next
+			if(abs(sd(d) / linkage_size) < 1e-7) next
 
 			# PRINT DISTANCES THAT CHANGE
-			warning(paste0("Link lengths are non-constant (", linkage$link.names[i], ": ", sd(d), ")."))
+			warning(paste0("The distance between joints ", linkage$joint.links[i, 'Joint1'], " and ", linkage$joint.links[i, 'Joint2'], " is non-constant (", sd(d), ")."))
 		}
 	}
 
-	# CHECK THAT DISTANCES WITHIN LINKS HAVE NOT CHANGED
+	# CHECK THAT JOINT CONSTRAINTS HOLD
+	if(check.joint.cons && dim(linkage_r$joint.coor)[3] > 1){
+
+		for(i in 1:length(linkage$joint.types)){
+		
+			if(linkage$joint.types[i] == 'R' && i %in% joints_ground){
+			
+				# FIND DISTANCES FROM FIRST JOINT POSITION TO ALL SUBSEQUENT POSITIONS
+				diff <- linkage_r$joint.coor[i, , ] - matrix(linkage_r$joint.coor[i, , 1], nrow=dim(linkage_r$joint.coor)[2], ncol=dim(linkage_r$joint.coor)[3])
+				d <- sqrt(colSums((diff)^2))
+
+				# ALL DISTANCES CONSTANT
+				if(abs(sd(d) / linkage_size) < 1e-7) next
+
+				# PRINT DISTANCES THAT CHANGE
+				warning(paste0("Joint ", i, " is non-stationary (", sd(d), ")."))
+			}
+
+			if(linkage$joint.types[i] == 'L' && i %in% joints_ground){
+
+				# FIND DISTANCES FROM JOINT TO LINE
+				d <- abs(distPointToLine(t(linkage_r$joint.coor[i, , ]), linkage_r$joint.coor[i, , 1], linkage_r$joint.coor[i, , 1]+linkage_r$joint.cons[[i]]))
+
+				# ALL DISTANCES CONSTANT
+				if(max(d) / linkage_size < 1e-7) next
+
+				# PRINT DISTANCES THAT CHANGE
+				warning(paste0("Joint ", i, " deviates from the linear constraint (max: ", max(d), ")."))
+			}
+
+			if(linkage$joint.types[i] == 'P' && i %in% joints_ground){
+
+				# FIND DISTANCES FROM JOINT TO LINE
+				d <- abs(distPointToPlane(t(linkage_r$joint.coor[i, , ]), linkage_r$joint.cons[[i]], linkage_r$joint.coor[i, , 1]))
+
+				# ALL DISTANCES CONSTANT
+				if(max(d) / linkage_size < 1e-7) next
+
+				# PRINT DISTANCES THAT CHANGE
+				warning(paste0("Joint ", i, " deviates from the planar constraint (max: ", max(d), ")."))
+			}
+		}
+	}
+
+	# CHECK THAT DISTANCES AMONG POINTS HAVE NOT CHANGED
 	if(check.inter.point.dist && !is.null(linkage_r$points) && dim(linkage_r$points)[3] > 1){
-		for(points_assoc in linkage$points.assoc){
+		for(points_assoc in linkage$point.assoc){
 
 			if(length(points_assoc) < 2) next
 		
@@ -400,6 +351,8 @@ animateLinkage <- function(linkage, t, input.link=NULL){
 			warning("Interpoint distance within link are non-constant.")
 		}
 	}
+
+	class(linkage_r) <- 'animate_linkage'
 
 	linkage_r
 }

@@ -9,16 +9,17 @@ reverseLinkage <- function(linkage){
 	rownames(linkage$joints.cvec) <- rownames(linkage$joints.cvec)[nrow(linkage$joints.cvec):1]
 
 	# REVERSE JOINT TYPES
-	linkage$joints.type <- linkage$joints.type[length(linkage$joints.type):1]
+	linkage$joint.types <- linkage$joint.types[length(linkage$joint.types):1]
 
 	# REVERSE LINK NAMES
 	if(!is.null(linkage$link.names)) linkage$link.names <- c(linkage$link.names[(length(linkage$link.names)-1):1], linkage$link.names[length(linkage$link.names)])
 	
 	# REVERSE LINK-POINT ASSOCIATIONS
-	if(!is.null(linkage$points.assoc) && is.null(names(linkage$points.assoc))) linkage$points.assoc <- linkage$points.assoc[length(linkage$points.assoc):1]
+	if(!is.null(linkage$point.assoc) && is.null(names(linkage$point.assoc))) linkage$point.assoc <- linkage$point.assoc[length(linkage$point.assoc):1]
 
 	# GET REVERSE MINIMUM PARAMETERS
-	linkage$min.param <- defineLinkage(joints=linkage$joints, joints.type=linkage$joints.type, joints.cvec=linkage$joints.cvec)$min.param
+	linkage$min.param <- defineLinkage(joint.coor=linkage$joint.coor, joint.types=linkage$joint.types, 
+		joint.cons=linkage$joint.cons)$min.param
 
 	linkage
 }

@@ -8,7 +8,10 @@ intersectSphereLine <- function(c, r, x, l, point.compare=NULL){
 	a <- -sum(l*(x - c))
 	b <- sum(l*(x - c))^2 - sum((x - c)^2) + r^2
 	
-	if(b < 0) stop("No solution possible for sliding joint position.")
+	if(b < 0 && abs(b) > 10^-10) stop("No solution possible for sliding joint position.")
+
+	# IF B IS ZERO
+	if(abs(b) <= 10^-10) b <- 0
 
 	# DISTANCE ON LINE TO POINT FROM X (LINE ORIGIN)
 	d <- c(a + sqrt(b), a - sqrt(b))

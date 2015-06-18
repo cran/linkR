@@ -5,103 +5,102 @@
 This function takes the joint positions, types and constraints of a lever or linkage mechanism or a set of minimum parameters and creates a list of class \code{"linkage"} that forms the basic object for model creation and analysis.
 }
 \usage{
-defineLinkage(joints = NULL, joints.type = NULL, joints.cvec = NULL, 
-              min.param = NULL, points = NULL, link.assoc = NULL, 
-              link.names = NULL, euler.vec = c(1,0,0))
+defineLinkage(joint.coor, joint.types, joint.cons, 
+              joint.conn = NULL, points = NULL, link.assoc = NULL, 
+              link.names = NULL, ground.link = NULL, lar.cons = NULL)
 }
 \arguments{
-  \item{joints}{A matrix of 2D or 3D coordinates that are the joints of a lever or linkage mechanism.}
-  \item{joints.type}{A vector of single letters indicating the type of constraints acting on each joint. Supported types are "R", "U", "L" and "P". See Details.}
-  \item{joints.cvec}{A list or matrix of 3D constraint vectors that correspond to each joint.}
-  \item{min.param}{An alternative input from \code{joints} in the form of a vector or list of minimum parameters that define a given linkage. Currently, this type of input is only supported for linkages of the type "RUL", "RUUR" and "RULUR".}
+  \item{joint.coor}{A matrix of 2D or 3D coordinates that are the joints of a lever or linkage mechanism.}
+  \item{joint.types}{A vector of single letters indicating the type of constraints acting on each joint. Supported types are "R", "U", "L" and "P". See Details.}
+  \item{joint.cons}{A list or matrix of 3D constraint vectors that correspond to each joint.}
+  \item{joint.conn}{A two-column matrix having the same number of rows as \code{joint.coor}, specifying the two links that each joint connects.}
   \item{points}{A matrix of points associated with one or more of the links in the linkage (optional).}
   \item{link.assoc}{A vector of integers or rownames indicating the link with which each row in \code{points} is associated. Required if \code{points} is non-\code{NULL} but otherwise optional.}
   \item{link.names}{A vector of the link names (optional).}
-  \item{euler.vec}{A reference vector used by \code{defineLinkage} in finding the Euler rotation angles for minimum parameters.}
+  \item{ground.link}{A numeric or link name specifying the ground link of the linkage.}
+  \item{lar.cons}{A list specifying long-axis rotation constraints on links with S-joints on each end. This feature will eventually be added into the \code{joint.conn} input parameter as network connections.}
 }
 \details{
-This function creates a list structure of class \code{"linkage"} from either a matrix of joint coordinates or a vector of minimum parameters that contains a complete description of the linkage's geometry and the constraints on its movement. This list structure can be input into functions such as animateLinkage or drawLinkage.
+This function creates a linkage network, a list structure of class \code{"linkage"}, from a matrix of joint coordinates, constraints and interconnections. This list structure can be input into functions such as animateLinkage or drawLinkage.
 
 The motion of each joint in the linkage and the nature of force and torque transmission at the joint depend on the constraint acting on each joint. \code{linkR} currently supports four joint types:
 
 \itemize{
 	\item \bold{R} : Joint constraint is rotational. Allows rotation about a single, fixed axis (hinge joint).
-	\item \bold{U} : Joint is unconstrained. Allows rotation about any axis (ball-and-socket joint).
+	\item \bold{S} : Joint is spherical. Allows rotation about any axis (ball-and-socket joint) including long-axis rotation.
 	\item \bold{L} : Joint constraint is linear. Joint translates along a vector of fixed orientation (slides along a line).
 	\item \bold{P} : Joint constraint is planar. Joint translates along a plane of fixed orientation (slides within a plane).
 }
 
-These joint types can be combined to create a linkage mechanism. \code{linkR} currently supports 10 different combinations with the indicated degrees of freedom (DOF):
-
-\itemize{
-	\item \bold{LL} : Two coupled joints that slide along specified vectors (1 DOF).
-	\item \bold{LLL} : Three coupled joints that slide along specified vectors (1 DOF).
-	\item \bold{RU} : A lever that rotates about a fixed axis of rotation (1 DOF).
-	\item \bold{LUR}, \bold{RUL} : A sliding joint connected to a rotating lever through a single coupling joint (1 DOF).
-	\item \bold{LLUR} : Two sliding joints connected to a rotating lever through a single coupling joint (1 DOF).
-	\item \bold{RUUR} : A standard 4-bar linkage, with two rotating links connected by a coupling link (1 DOF).
-	\item \bold{RULUR} : A 5-bar linkage, with two rotating links connected by two coupling links that share a sliding joint (1 DOF).
-	\item \bold{LURR} : A 3-bar linkage in which a sliding joint is connected to a rotating link through another rotating link (2 DOF).
-	\item \bold{LPUR} : A 3-bar linkage in which a sliding joint is connected to a rotating link through a coupling link, one joint of which slides within a plane (2 DOF).
-}
-
-For additional examples, see: \href{http://home.uchicago.edu/~aolsen/software/linkr/examples.shtml}{linkR Example Gallery}
+Please see \href{http://home.uchicago.edu/~aolsen/software/linkr.shtml}{linkR Resources} for a tutorial on how to use the linkR package and the \href{http://home.uchicago.edu/~aolsen/software/linkr/examples.shtml}{linkR example gallery} for several examples (code and animations) of different linkages that can be created using linkR.
 }
 \value{
+
+		'dof' = dof
+
 a list of class \code{"linkage"} with the following elements:
-	\item{joints}{A matrix of 2D or 3D coordinates that are the joints of a lever or linkage mechanism.}
-	\item{joints.cvec}{A vector of single letters indicating the type of constraints acting on each joint.}
-	\item{joints.type}{A list or matrix of 3D constraint vectors that correspond to each joint.}
-	\item{points}{A matrix of points associated with one or more of the links in the linkage, if input.}
-	\item{points.assoc}{A list of the same length as the number of links (\code{nrow(joints)}) indicating the points associated with each link.}
+	\item{joint.coor}{A matrix of 2D or 3D coordinates that are the joints of a lever or linkage mechanism.}
+	\item{joint.cons}{A vector of single letters indicating the type of constraints acting on each joint.}
+	\item{joint.types}{A list or matrix of 3D constraint vectors that correspond to each joint.}
+	\item{joint.links}{A matrix specifying the joints connecting to each link. Used by the \code{animateLinkage} function.}
+	\item{joint.paths}{"Path fragments" along the linkage network, used by the \code{animateLinkage} function to solve for the position of unresolved joints.}
+	\item{joint.conn}{A two-column matrix having the same number of rows as \code{joint.coor}, specifying the two links that each joint connects.}
+	\item{joint.init}{The initial position of the joints in the linkage.}
+	\item{ground.joints}{The ground joints in the linkage.}
+	\item{points}{A matrix of points associated with any of the links in the linkage.}
+	\item{points.assoc}{The links with which each point is associated.}
 	\item{link.assoc}{A vector of integers or rownames indicating the link with which each row, if input.}
 	\item{link.names}{A vector of the link names.}
-	\item{min.param}{A vector of minimum parameters for the particular linkage type. \code{NULL} for types other than "RUL", "RUUR" and "RULUR".}
-	\item{dof}{The number of degrees of freedom of the linkage.}
+	\item{link.lcs}{Local coordinate systems assigned to each link which will be transformed with the associated link for kinematic analysis.}
+	\item{lar.cons}{Constraints on long-axis rotation.}
+	\item{num.links}{The number of links in the linkage.}
+	\item{dof}{The number of degrees of freedom of the linkage. Currently, this may not be accurately estimated for all linkages.}
 }
 \seealso{\code{\link{animateLinkage}}}
 \author{Aaron Olsen}
 \examples{
+## Define and animate coupled planar and linear sliders
+# Joint coordinates
+joint.coor <- rbind(c(-0.6,0,0), c(-0.2,1,0), c(0,1,0), c(0.2,1,0), 
+	c(1.5,0.5,0), c(1.5,0.4,0))
 
-###                      Defining a linkage of type RUUR (1 DOF)                    ###
-## Set the joint coordinates
-joints <- matrix(c(0,0,0, 0,2,0, 1,1,0, 1,0,0), nrow=4, ncol=3, byrow=TRUE)
+# Joint types
+joint.types <- c("S", "S", "P", "S", "S", "L")
 
-## Set the joint constraint vectors
-joints.cvec <- list(c(1,0,0), c(1,0,0), NA, c(0,0,1))
+# Joint constraint vectors
+joint.cons <- list(NA, NA, c(1,0,0), NA, NA, c(1,0,0))
 
-## Define the linkage
-linkage <- defineLinkage(joints=joints, joints.cvec=joints.cvec, 
-    joints.type=c("R", "U", "U", "R"))
+# The links connected by each joint
+joint.conn <- rbind(c(0,1), c(1,2), c(2,0), c(2,3), c(3,4), c(4,0))
 
-## Animate the linkage
-link_anim <- animateLinkage(linkage, t=seq(0, 0.2, length=50))
+# Input parameters, with 100 iterations
+input.param <- seq(0, -0.5, length=5)
 
-## Draw the linkage using native R plotting
-drawLinkage(link_anim, method="plot")
+# Joint at which to apply input parameters
+input.joint <- 6
 
+# Add points to clarify the visualization
+points <- rbind(c(-0.4,0.5,0), c(1.4,0.4,0), c(1.4,0.5,0), c(1.6,0.5,0), 
+	c(1.6,0.4,0), c(0.75,0.4,0), c(1.75,0.4,0), c(0.85,0.75,0),
+	c(-0.2,0.9,0.1), c(0.2,0.9,0.1), c(0.2,0.9,-0.1), c(-0.2,0.9,-0.1),
+	c(-0.2,1.1,0.1), c(0.2,1.1,0.1), c(0.2,1.1,-0.1), c(-0.2,1.1,-0.1))
 
-###                      Defining a linkage of type LPUR (2 DOF)                    ###
-## Set the joint coordinates
-joints <- matrix(c(0,0,0, 1,1,0, 1,2,0, 2,3,0), nrow=4, ncol=3, byrow=TRUE)
+# The link each point is associated with
+link.assoc <- c(1,4,4,4,4,0,0,3,rep(2,8))
 
-## Set points to associate with each link (positioned in the middle of each link)
-points <- rbind(
-    colMeans(joints[c(1,2), ]), 
-    colMeans(joints[c(2,3), ]), 
-    colMeans(joints[c(3,4), ]))
+# Lines to connect points for easier visualization
+path.connect <- list(c(2:5,2), c(6:7), c(9:12,9), c(13:16,13), c(9,13), c(10,14), 
+	c(11,15), c(12,16))
 
-## Set the joint constraint vectors
-joints.cvec <- list(c(1,0,0), c(1,0,0), NA, c(0,0,1))
+# Define the linkage
+linkage <- defineLinkage(joint.coor=joint.coor, joint.types=joint.types, 
+	joint.cons=joint.cons, joint.conn=joint.conn, points=points, link.assoc=link.assoc)
 
-## Define the linkage
-linkage <- defineLinkage(joints=joints, joints.cvec=joints.cvec, 
-    joints.type=c("L", "P", "U", "R"), points=points, link.assoc=1:3)
+# Animate the linkage
+animate <- animateLinkage(linkage, input.param=input.param, input.joint=input.joint)
 
-## Animate the linkage
-link_anim <- animateLinkage(linkage, t=cbind(seq(0, 0.3, 0.01), seq(0, -0.3, -0.01)))
-
-## Draw the linkage using native R plotting
-drawLinkage(link_anim, method="plot")
-
+# Draw the linkage
+# This will create a figure using the plot device
+# Refer to the linkR tutorial for how to create interactive 3D animations (see "Details")
+drawLinkage(animate, path.connect=path.connect)
 }

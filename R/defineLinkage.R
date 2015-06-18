@@ -1,111 +1,148 @@
-defineLinkage <- function(joints=NULL, joints.type=NULL, joints.cvec=NULL, min.param=NULL, points=NULL, link.assoc=NULL, link.names=NULL, euler.vec=c(1,0,0)){
+defineLinkage <- function(joint.coor, joint.types, joint.cons, 
+	joint.conn = NULL, points = NULL, link.assoc = NULL, 
+	link.names = NULL, ground.link=NULL, lar.cons = NULL){
 
 	# VALIDATE INPUTS
 	if(!is.null(points) && is.null(link.assoc)) stop("'link.assoc' is NULL. If 'points' is defined, 'link.assoc' must be non-NULL.")
-
-	# IF MIN PARAM IS LIST, CONVERT TO VECTOR
-	if(!is.null(min.param) && is.list(min.param)) min.param <- unlist(min.param)
+	if(!is.null(joint.conn) && nrow(joint.conn) != length(joint.types)) stop(paste0("The number of rows in 'joint.conn' (", nrow(joint.conn), ") must be equal to the number of joints specified in 'joint.types' (", length(joint.types), ")."))
+	if(length(joint.types) != nrow(joint.coor)) stop(paste0("The number of rows in 'joint.coor' (", nrow(joint.coor), ") must be equal to the number of joints specified in 'joint.types' (", length(joint.types), ")."))
 
 	# MAKE SURE JOINT TYPE LETTERS ARE UPPERCASE FOR STRING MATCHING
-	if(!is.null(joints.type)) joints.type <- toupper(joints.type)
+	if(!is.null(joint.types)) joint.types <- toupper(joint.types)
 
 	# DEFAULT NULLS
-	points.assoc <- NULL
+	point.assoc <- NULL
+	
+	# IF JOINT MATRIX IS 2D, ADD THIRD DIMENSION AS ZERO
+	if(ncol(joint.coor) == 2) joint.coor <- cbind(joint.coor, rep(0, nrow(joint.coor)))
 
-	if(is.null(min.param)){
-
-		# IF JOINT MATRIX IS 2D, ADD THIRD DIMENSION AS ZERO
-		if(ncol(joints) == 2) joints <- cbind(joints, rep(0, nrow(joints)))
-
-		if(!is.null(joints.cvec)){
-			if(is.matrix(joints.cvec) && ncol(joints.cvec) == 2) joints.cvec <- cbind(joints.cvec, rep(0, nrow(joints.cvec)))
-			if(is.list(joints.cvec)){
-				for(i in 1:length(joints.cvec)) if(!is.na(joints.cvec[[i]][1]) && length(joints.cvec[[i]]) == 2) joints.cvec[[i]] <- c(joints.cvec[[i]], 0)
-			}
+	# IF JOINT CONSTRAINTS ARE 2D, ADD THIRD DIMENSION AS ZERO
+	if(!is.null(joint.cons)){
+		if(is.matrix(joint.cons) && ncol(joint.cons) == 2) joint.cons <- cbind(joint.cons, rep(0, nrow(joint.cons)))
+		if(is.list(joint.cons)){
+			for(i in 1:length(joint.cons)) if(!is.na(joint.cons[[i]][1]) && length(joint.cons[[i]]) == 2) joint.cons[[i]] <- c(joint.cons[[i]], 0)
 		}
-
-		# IF JOINT CONSTRAINT VECTORS ARE NULL, DEFINE AS PLANAR FOR 4-BAR
-		if(nrow(joints) == 4 && is.null(joints.cvec)) joints.cvec <- matrix(c(0,0,1, NA,NA,NA, NA,NA,NA, 0,0,1), nrow=4, ncol=3, byrow=TRUE)
-
-	}else{
-
-		if(is.null(names(min.param))){
-			stop("'min.param' must be a named vector or list. No names specified.")
-			#names(min.param)[1:6] <- c('Li', 'Ria', 'Rib', 'Rig', 'L2', 'T1')
-			#if(length(min.param) > 9) names(min.param)[7:13] <- c('E3a', 'E3b', 'E3g', 'Lo', 'Roa', 'Rob', 'Rog')
-			#if(length(min.param) > 13) names(min.param)[14:17] <- c('L3', 'E4a', 'E4b', 'E4g')
-			#if(length(min.param) == 9 && length(min.param) > 13) names(min.param)[(length(min.param)-2):length(min.param)] <- c('S3a', 'S3b', 'S3g')
-		}
-		
-		if(length(min.param) == 4) min.param <- c(min.param, setNames(c(0, pi/2, 0, 0, 0), c('Ria', 'Rib', 'Rig', 'S3b', 'S3g')))
-		if(length(min.param) == 5) min.param <- c(min.param, setNames(c(0, 0, 0, pi/2, 0, 0, pi/2, 0), c('E3b', 'E3g', 'Ria', 'Rib', 'Rig', 'Roa', 'Rob', 'Rog')))
-		if(length(min.param) == 8) min.param <- c(min.param, setNames(c(0, 0, 0, pi/2, 0, 0, pi/2, 0, 0, 0, 0, 0), c('E3b', 'E3g', 'Ria', 'Rib', 'Rig', 'Roa', 'Rob', 'Rog', 'E4b', 'E4g', 'S3b', 'S3g')))
-
-		# TRANSMISSION LINK AS VECTOR FROM JOINT 2 ROTATED INTO THE XY PLANE
-		v12 <- rotationMatrixZYX(c(min.param['T1'],0,0)) %*% c(0, min.param['L2'], 0)
-
-		# DEFINE FIRST THREE JOINTS
-		joints <- matrix(c(0,0,0, 0,min.param['Li'],0, v12[1],min.param['Li']+v12[2],0), nrow=3, ncol=3, byrow=TRUE)
-
-		if(length(min.param) == 13){
-
-			# ADD FOURTH JOINT
-			joints <- rbind(joints, joints[3, ] + (uvector(joints[3, ] - joints[2, ]) * min.param['Lo']) %*% rotationMatrixZYX(min.param[c('E3a', 'E3b', 'E3g')]))
-		}
-		if(length(min.param) == 20){
-
-			# ADD FOURTH AND FIFTH JOINTS
-			joints <- rbind(joints, joints[3, ] + (uvector(joints[3, ] - joints[2, ]) * min.param['L3']) %*% rotationMatrixZYX(min.param[c('E3a', 'E3b', 'E3g')]))
-			joints <- rbind(joints, joints[4, ] + (uvector(joints[4, ] - joints[3, ]) * min.param['Lo']) %*% rotationMatrixZYX(min.param[c('E4a', 'E4b', 'E4g')]))
-		}
-
-		# FIND AXES OF ROTATION USING EULER ANGLES
-		joints.cvec <- matrix(NA, nrow=nrow(joints), ncol=3)
-		joints.cvec[1, ] <- euler.vec %*% rotationMatrixZYX(min.param[c('Ria', 'Rib', 'Rig')])
-		if(length(min.param) > 9) joints.cvec[nrow(joints.cvec), ] <- euler.vec %*% rotationMatrixZYX(min.param[c('Roa', 'Rob', 'Rog')])
-		
-		# ADD SLIDE VECTOR
-		if('S3a' %in% names(min.param)) joints.cvec[3, ] <- uvector(euler.vec %*% rotationMatrixZYX(min.param[c('S3a', 'S3b', 'S3g')]))
-
-		# SPECIFY JOINT TYPES
-		if(nrow(joints) == 3) joints.type <- c("R", "U", "L")
-		if(nrow(joints) == 4) joints.type <- c("R", "U", "U", "R")
-		if(nrow(joints) == 5) joints.type <- c("R", "U", "L", "U", "R")
 	}
 
-	# DEFINE NUMBER OF DEGREES OF FREEDOM
-	dof_list <- list(
-		c('LL', 'LLL', 'RU', 'LUR', 'LLUR', 'RUL', 'RUUR', 'RULUR'),
-		c('LURR', 'LPUR')
-		)
+	# IF JOINT CONSTRAINT VECTORS ARE NULL, DEFINE R-JOINTS AS FOR PLANAR 4-BAR
 
 	# MAKE SURE THAT LINKAGE TYPE IS ALLOWED
-	supported_types <- unlist(dof_list)
-	if(!paste(joints.type, collapse='') %in% supported_types) 
-		stop(paste0("The input linkage of type '", paste(joints.type, collapse=''), "' is not currently supported. Currently supported linkage types are: ", paste(supported_types, collapse=", "), "."))
 
-	#if(!is.null(link.assoc)){
-	#	if(is.null(link.names) && length(link.assoc) != nrow(joints)) stop(paste0("If 'link.names' is NULL, the length of 'link.assoc' should correspond to the number of links (", nrow(joints), ")."))
-	#}
+	# IF JOINT CONSTRAINTS ARE MATRIX, CONVERT TO LIST
+	if(is.matrix(joint.cons)){
+		joints_cvec <- list()
+		for(i in 1:nrow(joint.cons)) if(!is.na(joint.cons[i, 1])) joints_cvec[[i]] <- joint.cons[i, ]
+		joint.cons <- joints_cvec
+	}
 
-	# IF JOINT CONSTRAINTS ARE LIST, CONVERT TO MATRIX
-	if(is.list(joints.cvec)){
-		joints_cvec <- matrix(NA, nrow=nrow(joints), ncol=3)
-		for(i in 1:nrow(joints)) if(!is.na(joints.cvec[[i]][1])) joints_cvec[i, ] <- unlist(joints.cvec[[i]])
-		joints.cvec <- joints_cvec
+	# ADD ROWNAMES TO JOINTS
+	if(is.null(rownames(joint.coor))) rownames(joint.coor) <- paste0("Joint", 1:nrow(joint.coor))
+
+	# ADD ROWNAMES TO CONSTRAINT LIST
+	if(is.null(names(joint.cons))) names(joint.cons) <- rownames(joint.coor)
+	
+	# MAKE CONSTRAINTS VECTORS UNIT VECTORS
+	for(i in 1:length(joint.cons)) if(!is.na(joint.cons[[i]]) && is.vector(joint.cons[[i]])) joint.cons[[i]] <- uvector(joint.cons[[i]])
+
+	# AUTOMATICALLY DEFINE PAIRS AS SIMPLE CHAIN IF NOT SPECIFIED
+	if(is.null(joint.conn)){
+		joint.conn <- matrix(NA, nrow=nrow(joint.coor), ncol=2)
+		for(i in 1:nrow(joint.coor)){
+			if(i < nrow(joint.coor)){
+				joint.conn[i, ] <- c(i-1, i)
+			}else{
+				joint.conn[i, ] <- c(i-1, 0)
+			}
+		}
 	}
 
 	# ASSIGN DEGREES OF FREEDOM
-	for(i in 1:length(dof_list)) if(paste(joints.type, collapse='') %in% dof_list[[i]]) dof <- i
+	dof_joints <- setNames(c(1,1,2,3), c("R", "L", "P", "S"))
 
-	# ADD ROWNAMES TO JOINTS
-	rownames(joints) <- paste0("Joint", 1:nrow(joints))
+	# SET LINK NAMES IF GROUND IS DEFINED
+	if(is.null(link.names) && !is.null(ground.link)){
+		link.names <- ground.link
+		all_link_names <- unique(c(joint.conn))
+		link.names <- c(link.names, all_link_names[all_link_names != ground.link])
+	}
 
-	# ADD ROWNAMES TO CONSTRAINT VECTOR LIST
-	rownames(joints.cvec) <- paste0("Joint", 1:nrow(joints.cvec))
+	# SET JOINT PAIRS AS NUMERIC INDICES TO LINKS
+	if(!is.null(link.names) && !is.numeric(joint.conn[1,1])){
+		for(i in 1:nrow(joint.conn)) joint.conn[i, ] <- c(which(joint.conn[i, 1] == link.names), which(joint.conn[i, 2] == link.names))
+		joint.conn <- matrix(as.numeric(joint.conn), nrow=nrow(joint.conn), ncol=ncol(joint.conn)) - 1
+	}
+
+	# GET UNIQUE INDICES OF LINKS
+	link_idx_unique <- unique(c(joint.conn))
+
+	# GET NUMBER OF LINKS
+	num_links <- length(link_idx_unique)
+
+	# IF LINK.NAMES IS NULL, SET TO DEFAULT
+	if(is.null(link.names)) link.names <- c("Ground", paste0("Link", 1:(num_links-1)))
+
+	# CREATE LOCAL COORDINATE SYSTEMS
+	link.lcs <- setNames(vector("list", length(link.names)), link.names)
+	for(i in 1:length(link.lcs)) link.lcs[[names(link.lcs)[i]]] <- matrix(c(0,0,0, 1,0,0, 0,1,0, 0,0,1), nrow=4, ncol=3, byrow=TRUE)
+
+	# LONG-AXIS ROTATION CONSTRAINTS
+	lar_cons <- NULL
+	if(!is.null(lar.cons)){
+		
+		lar_cons <- sapply(link.names, function(x) NULL)
+
+		for(i in 1:length(lar.cons)){
+		
+			if(is.numeric(lar.cons[[i]]$link)){
+				idx <- link.names[lar.cons[[i]]$link]
+			}else{
+				idx <- lar.cons[[i]]$link
+			}
+			
+			lar_cons[[idx]] <- lar.cons[[i]]
+
+			# MAKE UNIT VECTOR
+			lar_cons[[idx]]$vec <- uvector(lar_cons[[idx]]$vec)
+			
+			# SAVE INITIAL POINT
+			lar_cons[[idx]]$point.i <- lar_cons[[idx]]$point
+		}
+	}
+
+	# FIND LINKAGE DEGREES OF FREEDOM
+	# BUG:
+	#	NOT RETURNING THE CORRECT NUMBER FOR OWL CRANIAL LINKAGE NETWORK...
+	# 	RETURNS 6 BUT SHOULD BE 7 (1 + 6 LONG-AXIS ROTATIONS)
+	# 	RETURNS CORRECT NUMBER FOR SALMON HYOID-LOWER JAW LINKAGE (2 + 5 LONG-AXIS ROTATIONS)
+	dof <- 6*(length(unique(c(joint.conn))) - 1) - 6*length(joint.types) + sum(dof_joints[unlist(joint.types)])
+
+	# CREATE MATRIX FOR CONSTRAINED LENGTHS BETWEEN JOINTS
+	joint.links <- matrix(NA, nrow=0, ncol=4, dimnames=list(NULL, c('Link.idx', 'Joint1', 'Joint2', 'Length')))
+
+	for(link_idx in link_idx_unique){
+
+		# FIND ALL JOINTS CONNECTED TO LINK
+		joints_comm <- (1:nrow(joint.conn))[(rowSums(link_idx == joint.conn) == 1)]
+		
+		# JOINTS CONNECTED TO GROUND
+		if(link_idx == 0){
+			for(i in 1:length(joints_comm)) joint.links <- rbind(joint.links, c(link_idx, 0, joints_comm[i], 0))
+			next
+		}
+
+		# GENERATE UNIQUE PAIRS AND CALCULATE DISTANCE BETWEEN JOINTS IN PAIR
+		for(i in 1:(length(joints_comm)-1)){
+			for(j in (i+1):(length(joints_comm))){
+				joint.links <- rbind(joint.links, c(link_idx, joints_comm[i], joints_comm[j], sqrt(sum((joint.coor[joints_comm[i], ]-joint.coor[joints_comm[j], ])^2))))
+			}
+		}
+	}
 	
-	# MAKE CONSTRAINT VECTORS UNIT VECTORS
-	for(i in 1:nrow(joints.cvec)) if(!is.na(joints.cvec[i, 1])) joints.cvec[i, ] <- uvector(joints.cvec[i, ])
+	# IDENTIFY GROUND JOINTS - REMOVE ZERO
+	ground_joints <- joint.links[joint.links[, 1] == 0, 'Joint2']
+
+	# CREATE CONNECTED JOINT SEQUENCES
+	joint_paths <- connJointSeq(joint.links, joint.types, joint.conn, ground_joints)
 
 	if(!is.null(points)){
 		
@@ -118,115 +155,34 @@ defineLinkage <- function(joints=NULL, joints.type=NULL, joints.cvec=NULL, min.p
 		# MAKE SURE LINK.ASSOC IS OF THE SAME LENGTH AS POINTS
 		if(length(link.assoc) != nrow(points)) stop(paste0("The length of 'link.assoc' (", length(link.assoc), ") must be the same as the number of rows in 'points' (", nrow(points), ")."))
 
-		# IF LINK.NAMES IS NULL, SET TO DEFAULT
-		if(is.null(link.names)) link.names <- paste0("Link", 1:nrow(joints))
-
 		# SET THE POINTS ASSOCIATED WITH EACH LINK
-		points.assoc <- setNames(vector("list", nrow(joints)), link.names)			
+		point.assoc <- setNames(vector("list", length(link.names)), link.names)
 		
 		# IF LINK.ASSOC ARE NUMERIC INTEGERS
 		if(is.numeric(link.assoc[1])){
 			for(i in 1:length(link.assoc))
-				points.assoc[[names(points.assoc)[link.assoc[i]]]] <- c(points.assoc[[names(points.assoc)[link.assoc[i]]]], i)
+				point.assoc[[names(point.assoc)[link.assoc[i]+1]]] <- c(point.assoc[[names(point.assoc)[link.assoc[i]+1]]], i)
 		}else{
-			for(i in 1:length(link.assoc)) points.assoc[[link.assoc[i]]] <- c(points.assoc[[link.assoc[i]]], i)
+			for(i in 1:length(link.assoc)) point.assoc[[link.assoc[i]]] <- c(point.assoc[[link.assoc[i]]], i)
 		}
-	}
-
-	min_param_define <- FALSE
-	if(nrow(joints) == 3 && sum(joints.type == c('R', 'U', 'L')) == 3) min_param_define <- TRUE
-	if(nrow(joints) == 4 && sum(joints.type == c('R', 'U', 'U', 'R')) == 4) min_param_define <- TRUE
-	if(nrow(joints) == 5 && sum(joints.type == c('R', 'U', 'L', 'U', 'R')) == 5) min_param_define <- TRUE
-	
-	if(min_param_define){
-
-		# MINIMUM PARAMETER VECTOR
-		if(nrow(joints) == 3) min.param <- rep(NA, 9)
-		if(nrow(joints) == 4) min.param <- rep(NA, 13)
-		if(nrow(joints) == 5) min.param <- rep(NA, 20)
-
-		# SET VECTOR NAMES
-		names(min.param)[1:6] <- c('Li', 'Ria', 'Rib', 'Rig', 'L2', 'T1')
-		if(nrow(joints) >= 4) names(min.param)[7:13] <- c('E3a', 'E3b', 'E3g', 'Lo', 'Roa', 'Rob', 'Rog')
-		if(nrow(joints) >= 5) names(min.param)[14:17] <- c('L3', 'E4a', 'E4b', 'E4g')
-		if("L" %in% joints.type || "P" %in% joints.type) names(min.param)[(length(min.param)-2):length(min.param)] <- c('S3a', 'S3b', 'S3g')
-
-		# LENGTH OF LINKS
-		min.param['Li'] <- distPointToPoint(joints[c(1, 2), ])
-		min.param['L2'] <- distPointToPoint(joints[c(2, 3), ])
-
-		# ANGLE BETWEEN INPUT AND TRANSMISSION LINK
-		min.param['T1'] <- avectors(joints[1, ] - joints[2, ], joints[3, ] - joints[2, ])
-
-		# TRANSMISSION LINK AS VECTOR FROM JOINT 2 ROTATED INTO THE XY PLANE
-		v12 <- rotationMatrixZYX(c(min.param['T1'],0,0)) %*% c(0, distPointToPoint(joints[c(2, 3), ]), 0)
-
-		# A SECOND MATRIX OF THE FIRST THREE JOINTS, ORIGIN AT 0,0,0, JOINT1 AT 0,X,0 AND COPLANAR WITH THE XY PLANE
-		m2 <- matrix(c(0,0,0, 0,min.param['Li'],0, v12[1],min.param['Li']+v12[2],0), nrow=3, ncol=3, byrow=TRUE)
-
-		# IF THE ANGLE WAS OFF BY 180 DEGREES, SUBTRACT 180 DEGREES TO GET PROPER COORDINATES
-		if(distPointToPoint(m2[c(1,3),]) != distPointToPoint(joints[c(1,3),])){
-			min.param['T1'] <- avectors(joints[1, ] - joints[2, ], joints[3, ] - joints[2, ]) - pi
-			v12 <- rotationMatrixZYX(c(min.param['T1'],0,0)) %*% c(0, distPointToPoint(joints[c(2, 3), ]), 0)
-			m2 <- matrix(c(0,0,0, 0,min.param['Li'],0, v12[1],min.param['Li']+v12[2],0), nrow=3, ncol=3, byrow=TRUE)
-		}
-
-		# TRANSFORM ALL JOINTS SO THAT THE FIRST THREE ARE IN THE XY PLANE
-		joints_r <- copyTransformation(joints[1:3, ], m2, joints)
-
-		# TRANSFORM ALL AXES OF ROTATION SO THAT THEY CORRESPOND WITH ORIGINAL ORIENTATIONS
-		joints_cvec_r <- copyTransformation(joints[1:3, ], m2, joints.cvec, translate=FALSE)
-
-		# AXES OF ROTATION FOR INPUT LINK AS EULER ANGLES
-		min.param[c('Ria', 'Rib', 'Rig')] <- vectorsToEP(euler.vec, joints_cvec_r[1, ], 'left')[[1]]
-
-		if(nrow(joints) >= 4){
-
-			# LENGTH OF OUTPUT LINK
-			min.param['Lo'] <- distPointToPoint(joints[c(nrow(joints)-1, nrow(joints)), ])
-
-			# AXES OF ROTATION FOR OUTPUT LINK AS EULER ANGLES
-			min.param[c('Roa', 'Rob', 'Rog')] <- vectorsToEP(euler.vec, joints_cvec_r[nrow(joints_cvec_r), ], 'left')[[1]]
-
-			# ANGLE BETWEEN TRANSMISSION LINK AND OUTPUT LINK AS EULER ANGLES
-			min.param[c('E3a', 'E3b', 'E3g')] <- vectorsToEP(joints_r[3, ]-joints_r[2,], joints_r[4, ]-joints_r[3,], 'left')[[1]]
-		}
-
-		if(nrow(joints) >= 5){
-
-			# LENGTH OF LINK
-			min.param['L3'] <- distPointToPoint(joints[c(3, 4), ])
-
-			# ANGLE BETWEEN TRANSMISSION LINK AND OUTPUT LINK AS EULER ANGLES
-			min.param[c('E4a', 'E4b', 'E4g')] <- vectorsToEP(joints_r[4, ]-joints_r[3,], joints_r[5, ]-joints_r[4,], 'left')[[1]]
-		}
-
-		if("L" %in% joints.type || "P" %in% joints.type){
-
-			# TRANSFORM SLIDE SO THAT IT CORRESPONDS WITH ORIGINAL ORIENTATION
-			slide_r <- copyTransformation(joints[1:3, ], m2, joints.cvec[3, ], translate=FALSE)
-
-			# ANGLE BETWEEN TRANSMISSION LINK AND OUTPUT LINK AS EULER ANGLES
-			min.param[c('S3a', 'S3b', 'S3g')] <- vectorsToEP(euler.vec, slide_r, 'left')[[1]]
-		}
-
-		# TEST THAT TRANSFORMED JOINTS HAVE THE SAME GEOMETRY AS ORIGINAL JOINTS
-		joints_test <- copyTransformation(joints_r[1:3, ], joints[1:3, ], joints_r)
-		#print(round(sum(joints - joints_test), 10))
-		#print((euler.vec * min.param['L3']) %*% rotationMatrixZYX(ep))
-	}else{
-		min.param <- NULL
 	}
 
 	linkage <- list(
-		'joints' = joints,
-		'joints.cvec' = joints.cvec,
-		'joints.type' = joints.type,
+		'joint.coor' = joint.coor,
+		'joint.cons' = joint.cons,
+		'joint.types' = joint.types,
+		'joint.links' = joint.links,
+		'joint.paths' = joint_paths,
+		'joint.conn' = joint.conn,
+		'joint.init' = joint.coor,
+		'ground.joints' = ground_joints,
 		'points' = points,
-		'points.assoc' = points.assoc,
+		'point.assoc' = point.assoc,
 		'link.assoc' = link.assoc,
 		'link.names' = link.names,
-		'min.param' = min.param,
+		'link.lcs' = link.lcs,
+		'lar.cons' = lar_cons,
+		'num.links' = num_links,
 		'dof' = dof
 	)
 
