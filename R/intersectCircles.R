@@ -3,7 +3,7 @@ intersectCircles <- function(circle1, circle2){
 	# TO ADD: ONE CIRCLE WITHIN THE OTHER, NO OVERLAP IN CIRCUMFERENCE
 
 	# CURRENTLY ONLY WORKS WITH CIRCLES THAT ARE COPLANAR
-	if(avectors(circle1$N, circle2$N)) stop(paste0("Currently only finds intersection of circles that are co-planar. Input circles are not coplanar; difference in angle between normal vectors: ", avectors(circle1$N, circle2$N)))
+	if(avec(circle1$N, circle2$N)) stop(paste0("Currently only finds intersection of circles that are co-planar. Input circles are not coplanar; difference in angle between normal vectors: ", avec(circle1$N, circle2$N)))
 
 	# FIND DISTANCE BETWEEN CENTERS
 	center_dist <- distPointToPoint(circle1$C, circle2$C)

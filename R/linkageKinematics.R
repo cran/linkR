@@ -12,17 +12,25 @@ linkageKinematics <- function(linkage){
 	# SUBTRACT FIRST POSITION TO MAKE ALL TRANSLATIONS FROM INITIAL
 	joints.t <- linkage$joint.coor - array(linkage$joint.coor[, , 1], dim=dim(linkage$joint.coor))
 
-	# TRANSLATION BETWEEN CONSECUTIVE ITERATIONS
+	# TOTAL DISPLACEMENT BETWEEN CONSECUTIVE ITERATIONS (COLUMNS ARE ITERATIONS)
 	joints.tdis <- sqrt(apply(joints.t^2, c(1,3), 'sum'))
-	joints.t.d <- joints.t[, , 2:dim(joints.t)[3]] - joints.t[, , 1:(dim(joints.t)[3]-1)]
-	
-	# GET FULL TRANSLATION
+
+	# DERIVATIVE OF TRANSLATIONS
+	joints.t.d <- joints.t * NA
+	joints.t.d[, , 2:dim(joints.t)[3]] <- joints.t[, , 2:dim(joints.t)[3]] - joints.t[, , 1:(dim(joints.t)[3]-1)]
+
+	# DERIVATIVE OF TOTAL DISPLACEMENT BETWEEN CONSECUTIVE ITERATIONS (COLUMNS ARE ITERATIONS)
 	joints.tdis.d <- sqrt(apply(joints.t.d^2, c(1,3), 'sum'))
 
 	# COULD ADD DOUBLE DERIVATIVE: t.ddx, ..., t.dd
 
-	links.r.d <- array(0, dim=c(linkage$num.links, 3, dim(linkage$joint.coor)[3]-1), dimnames=list(linkage$link.names, NULL, NULL))
+	# DERIVATIVE OF LINK ANGULAR DISPLACEMENT
+	links.r.d <- array(0, dim=c(linkage$num.links, 3, dim(linkage$joint.coor)[3]), dimnames=list(linkage$link.names, NULL, NULL))
+	links.r.d[, , 1] <- NA
+
+	# LINK ANGULAR DISPLACEMENT (CUMULATIVE SUM OF EULER ANGLES)
 	links.r <- array(0, dim=c(linkage$num.links, dim(linkage$joint.coor)[2:3]), dimnames=list(linkage$link.names, NULL, NULL))
+	links.r[, , 1] <- NA
 
 	### FIND LINK ROTATIONS
 	for(link_name in linkage$link.names[2:length(linkage$link.names)]){
@@ -38,16 +46,21 @@ linkageKinematics <- function(linkage){
 			lcs2 <- linkage$link.lcs[[link_name]][2:4, , t] - matrix(linkage$link.lcs[[link_name]][1, , t], nrow=3, ncol=3, byrow=TRUE)
 
 			euler_angles <- CSToEA(lcs1, lcs2)[[1]]
+			
+			if(is.null(euler_angles)) next
 
-			links.r.d[link_name, , t-1] <- euler_angles[3:1]
+			links.r.d[link_name, , t] <- euler_angles[3:1]
 		}
 
 		# CUMULATIVE SUM OF EULER ANGLES
-		for(t in 2:dim(linkage$link.lcs[[link_name]])[3]){
-			links.r[link_name, , t] <- links.r.d[link_name, , t-1] + links.r[link_name, , t-1]
+		links.r[link_name, , 2] <- links.r.d[link_name, , 2]
+		if(dim(linkage$link.lcs[[link_name]])[3] > 2){
+			for(t in 3:dim(linkage$link.lcs[[link_name]])[3]){
+				links.r[link_name, , t] <- links.r.d[link_name, , t] + links.r[link_name, , t-1]
+			}
 		}
 	}
-
+	
 	# CREATE ARRAYS/MATRICES
 	links.rdis <- matrix(0, nrow=linkage$num.links, ncol=dim(linkage$joint.coor)[3], dimnames=list(linkage$link.names, NULL))
 
@@ -110,15 +123,23 @@ linkageKinematics <- function(linkage){
 			# FINAL VECTORS
 			vf <- p2[t, ] - p1[t, ]
 
+			# SKIP IF NA
+			if(sum(is.na(vi)) > 0 || sum(is.na(vf)) > 0){
+				links.rdis[i+1, t] <- NA
+				next
+			}
+
 			# SKIP IF ROTATION VECTORS HAVE ZERO LENGTH
 			if(sum(abs(vi)) == 0 || sum(abs(vf)) == 0) next
 
 			# FIND ANGLE BETWEEN VECTORS - FULL ROTATION
-			a_vectors <- avectors(vf, vi)
+			a_vectors <- avec(vf, vi)
 
 			# FIND DIRECTION - POSITIVE IF ROTATED VECTOR LESS THAN 90 DEG TO CROSS-PRODUCT (RIGHT HAND RULE)
 			# ONLY WORKS OVER SMALL INCREMENTS (LESS THAN 90?)
-			if(sum(ground_R) == 1) if(avectors(vf, cprod(vi, linkage$joint.cons[[link_joints[ground_R]]])) > pi/2) a_vectors <- -a_vectors
+			if(sum(ground_R) == 1){
+				if(avec(vf, cprod(vi, linkage$joint.cons[[link_joints[ground_R]]])) > pi/2) a_vectors <- -a_vectors
+			}
 			
 			# SAVE TO RETURN LIST
 			links.rdis[i+1, t] <- a_vectors
@@ -126,22 +147,23 @@ linkageKinematics <- function(linkage){
 	}
 
 	# FIND DIFFERENCE IN ANGLE BETWEEN CONSECUTIVE ITERATIONS
-	links.rdis.d <- links.rdis[, 2:ncol(links.rdis)] - links.rdis[, 1:(ncol(links.rdis)-1)]
-
-
+	links.rdis.d <- links.rdis * NA
+	links.rdis.d[, 2:ncol(links.rdis)] <- minAngle(links.rdis[, 2:ncol(links.rdis)] - links.rdis[, 1:(ncol(links.rdis)-1)])
 
 	### FIND POINT TRANSLATIONS
-	if(!is.null(linkage$points)){
+	if(!is.null(linkage$link.points)){
 
 		# SUBTRACT FIRST POSITION TO MAKE ALL TRANSLATIONS FROM INITIAL
-		points.t <- linkage$points - array(linkage$points[, , 1], dim=dim(linkage$points))
+		points.t <- linkage$link.points - array(linkage$link.points[, , 1], dim=dim(linkage$link.points))
 		points.tdis <- sqrt(apply(points.t^2, c(1,3), 'sum'))
 
 		# TRANSLATION BETWEEN CONSECUTIVE ITERATIONS
-		points.t.d <- linkage$points[, , 2:dim(linkage$points)[3]] - linkage$points[, , 1:(dim(linkage$points)[3]-1)]
+		points.t.d <- points.t * NA
+		points.t.d[, , 2:dim(linkage$link.points)[3]] <- linkage$link.points[, , 2:dim(linkage$link.points)[3]] - linkage$link.points[, , 1:(dim(linkage$link.points)[3]-1)]
 
 		# GET FULL TRANSLATION
 		points.tdis.d <- sqrt(apply(points.t.d^2, c(1,3), 'sum'))
+
 	}else{
 
 		points.t <- NULL

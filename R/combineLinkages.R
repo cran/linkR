@@ -17,20 +17,20 @@ combineLinkages <- function(linkage1, linkage2, linkage3=NULL, linkage4=NULL){
 
 	# CHECK THAT THERE IS OVERLAP IN LINK NAMES BETWEEN LINKAGE(S)/LINKAGE SYSTEM
 
-	if(!is.null(linkage1$points) || !is.null(linkage2$points)){
+	if(!is.null(linkage1$link.points) || !is.null(linkage2$link.points)){
 		
 		# START COMBINE POINT MATRICES
-		points <- linkage1$points
+		link.points <- linkage1$link.points
 
 		# COMBINE LINK ASSOCIATIONS
 		link.assoc <- linkage1$link.assoc
-		link.assoc <- c(link.assoc, linkage2$link.assoc[!rownames(linkage2$points) %in% rownames(points)])
+		link.assoc <- c(link.assoc, linkage2$link.assoc[!rownames(linkage2$link.points) %in% rownames(link.points)])
 		
 		# COMBINE LINK NAMES
 		link.names <- unique(c(linkage1$link.names, linkage2$link.names))
 
 		# FINISH COMBINE POINT MATRICES
-		points <- rbind(points, linkage2$points[!rownames(linkage2$points) %in% rownames(points), ])
+		link.points <- rbind(link.points, linkage2$link.points[!rownames(linkage2$link.points) %in% rownames(link.points), ])
 		
 		# RE-SET THE POINTS ASSOCIATED WITH EACH LINK
 		points.assoc <- setNames(vector("list", length(link.names)), link.names)			
@@ -75,7 +75,7 @@ combineLinkages <- function(linkage1, linkage2, linkage3=NULL, linkage4=NULL){
 	}
 
 	linkage_system$link.names <- link.names
-	linkage_system$points <- points
+	linkage_system$link.points <- link.points
 	linkage_system$link.assoc <- link.assoc
 	linkage_system$points.assoc <- points.assoc
 

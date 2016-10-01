@@ -6,6 +6,8 @@ angleOnCircleFromPoint <- function(circle, dist, P, point_compare=NULL, rerun=NU
 	#	POINT CLOSEST TO point_compare IS RETURNED.
 	# http://mathforum.org/library/drmath/view/65138.html
 
+	if(is.na(P[1])) stop("'P' has NA values.")
+	
 	a <- 2*circle$R*(sum(circle$V*(circle$C-P)))
 	b <- 2*circle$R*(sum(circle$U*(circle$C-P)))
 	c <- (dist^2 - (circle$R^2) - sum(P^2) - sum(circle$C^2) + 2*sum(circle$C*P))

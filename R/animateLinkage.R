@@ -1,5 +1,9 @@
 animateLinkage <- function(linkage, input.param, input.joint=NULL,
-	check.inter.joint.dist = TRUE, check.joint.cons = TRUE, check.inter.point.dist = TRUE){
+	check.inter.joint.dist = TRUE, check.joint.cons = TRUE, check.inter.point.dist = TRUE, 
+	print.progress = FALSE){
+
+	## BUG
+	# When sending a single associated point, row name in matrix gets dropped
 
 	# CHECK THAT NUMBER OF INPUTS MATCHES LINKAGE DEGREES OF FREEDOM
 
@@ -14,10 +18,10 @@ animateLinkage <- function(linkage, input.param, input.joint=NULL,
 	num_iter <- nrow(input.param[[1]])
 
 	# LINKAGE ARRAY FOR POINTS IF DEFINED
-	if(!is.null(linkage$points)){
+	if(!is.null(linkage$link.points)){
 
 		# CONVERT ARRAY TO MATRIX - COPY OVER LAST DIMENSION OF ARRAY
-		if(length(dim(linkage$points)) == 3) linkage$points <- linkage$points[, , dim(linkage$points)[3]]
+		if(length(dim(linkage$link.points)) == 3) linkage$link.points <- linkage$link.points[, , dim(linkage$link.points)[3]]
 	}
 
 	# CONVERT ARRAY TO MATRIX - COPY OVER LAST DIMENSION OF ARRAY
@@ -28,10 +32,17 @@ animateLinkage <- function(linkage, input.param, input.joint=NULL,
 
 	# COPY JOINT CONSTRAINTS
 	joint_cons <- linkage$joint.cons
+	
+	# CREATE OUTPUT LIST OF DYNAMIC JOINT CONSTRAINTS
+	joint_cons_dyn <- list()
+	for(i in 1:length(joint_cons)){
+		if(is.na(joint_cons[[i]][1])){joint_cons_dyn[[i]] <- NULL;next}
+		joint_cons_dyn[[i]] <- matrix(NA, nrow=num_iter, ncol=3)
+	}
 
 	# COPY OVER JOINTS AND POINTS
 	linkage_r$joint.coor <- array(linkage$joint.coor, dim=c(nrow(linkage$joint.coor), ncol(linkage$joint.coor), num_iter), dimnames=list(rownames(linkage$joint.coor), colnames(linkage$joint.coor), NULL))
-	if(!is.null(linkage$points)) linkage_r$points <- array(linkage$points, dim=c(nrow(linkage$points), ncol(linkage$points), num_iter), dimnames=list(rownames(linkage$points), colnames(linkage$points), NULL))
+	if(!is.null(linkage$link.points)) linkage_r$link.points <- array(linkage$link.points, dim=c(nrow(linkage$link.points), ncol(linkage$link.points), num_iter), dimnames=list(rownames(linkage$link.points), colnames(linkage$link.points), NULL))
 
 	# ADD MATRIX FOR SAVING POINTS AT EACH ITERATION
 	if(!is.null(linkage$lar.cons)){
@@ -82,8 +93,12 @@ animateLinkage <- function(linkage, input.param, input.joint=NULL,
 	# GET LINKAGE SIZE
 	linkage_size <- mean(sqrt(rowSums((linkage$joint.coor - matrix(colMeans(linkage$joint.coor), nrow=nrow(linkage$joint.coor), ncol=3, byrow=TRUE))^2)))
 
+	if(print.progress) cat(paste0('animateLinkage()\n'))
+
 	for(itr in 1:num_iter){
 	
+		if(print.progress) cat(paste0('\titr:', itr, '\n'))
+		
 		# SET PREVIOUS ITERATION
 		if(itr == 1){prev_itr <- 1}else{prev_itr <- itr-1}
 	
@@ -126,7 +141,20 @@ animateLinkage <- function(linkage, input.param, input.joint=NULL,
 				# SKIP IF ALL JOINTS ARE KNOWN
 				if(sum(joints_unknown[path] == '') == length(path)) next
 
-				#cat('A');print(paste(linkage$joint.types[path], '(', path, ')', joints_unknown[path], collapse='', sep=''))
+				if(print.progress){
+					cat(paste0('\t\tPath ', i, ': '))
+					cat(paste0(paste(linkage$joint.types[path], collapse='-'), '; '))
+					#cat(paste0(paste(joints_unknown[path], collapse='-')))
+					for(k in 1:length(path)){
+						if(joints_unknown[path[k]] == ''){cat('_')}else{cat(joints_unknown[path[k]])}
+						#cat(paste0(linkage$joint.types[path[k]], joints_unknown[path[k]]))
+						#cat(paste0(linkage$joint.types[path[k]], joints_unknown[path[k]]))
+						if(k < length(path)) cat('-')
+					}
+					cat(paste0('; '))
+					cat(paste0(paste(rownames(linkage$joint.coor)[path], collapse='-'), '; '))
+					cat('\n')
+				}
 				
 				#if(paste0(path, collapse='') == '234') next
 				#if(paste0(path, collapse='') == '432') next
@@ -140,6 +168,8 @@ animateLinkage <- function(linkage, input.param, input.joint=NULL,
 					if(!path[1] %in% joints_ground)
 						stop(paste0("linkR currently only supports input parameters for joints associated with ground (", paste(rownames(linkage$joint.coor)[joints_ground], collapse=', '), ")."))
 
+					if(print.progress) cat(paste0('\t\t\tApply input at ', linkage$joint.types[path[1]], '-joint:\n'))
+
 					# PATH WITH SINGLE JOINT IS INPUT PARAMETER
 					if(linkage$joint.types[path[1]] == 'R') solve_chain <- list(list('r' = input.param[[i]][itr, ]))
 					if(linkage$joint.types[path[1]] == 'L') solve_chain <- list(list('t' = uvector(linkage$joint.cons[[path[1]]])*input.param[[i]][itr, 1]))
@@ -148,27 +178,67 @@ animateLinkage <- function(linkage, input.param, input.joint=NULL,
 				}else{
 
 					# SOLVE POSITION
-					solve_chain <- solveKinematicChain(joint.types=linkage$joint.types[path], joints.unknown=joints_unknown[path], 
-						joint.coor=linkage_r$joint.coor[path, , itr], joint.cons=joint_cons[path], 
-						joints.dist=path_joint_lengths[[i]], joints.prev=joints.prev[path, ])
+					solve_chain <- tryCatch(
+						expr={
+							solveKinematicChain(joint.types=linkage$joint.types[path], joints.unknown=joints_unknown[path], 
+								joint.coor=linkage_r$joint.coor[path, , itr], joint.cons=joint_cons[path], 
+								joints.dist=path_joint_lengths[[i]], joints.prev=joints.prev[path, ], 
+								print.progress=print.progress)
+						},
+						error=function(cond){return(0)},
+						warning=function(cond) return(NULL)
+					)
 				}
 
 				# CHECK IF CHAIN COULD NOT BE SOLVED
-				if(is.null(solve_chain)) next
+				if(is.null(solve_chain)){
+					#cat(paste0('\t\t\tNo solution for path\n'))
+					next
+				}
 
-				#cat('A');print(paste(linkage$joint.types[path], '(', path, ')', joints_unknown[path], collapse='', sep=''))
-				#print(solve_chain)
+				# CHECK IF ERROR WAS RETURNED
+				if(!is.list(solve_chain)){
+					if(solve_chain == 0){
+						joint_types_in <- paste(linkage$joint.types[path], collapse='')
+						if(joint_types_in == 'SSR' || joint_types_in == 'RSS') solve_chain <- list(list('r'=NA))
+						#if(joint_types_in == 'LSS') solve_chain <- list(list('t'=NA))
+					}
+				}
+
+				if(print.progress){
+					for(k in 1:length(solve_chain)){
+						cat(paste0('\t\t\t\t', linkage$joint.types[path[k]], ''))
+						for(scname in names(solve_chain[[k]])){
+							cat(paste0('\t', scname, ': ', paste(round(solve_chain[[k]][[scname]], 3), collapse=', ')))
+						}
+						cat('\n')
+					}
+					#print(solve_chain)
+				}
+				#cat(paste0('\t', paste(linkage$joint.types[path], collapse='', sep=''), '\t', paste(joints_unknown[path], collapse=',', sep=''), '\n'));
+				#if(is.na(solve_chain[[1]][['r']])) return(1)
 
 				# APPLY SOLVE TO JOINTS AND POINTS
-				apply_solve_chain <- applySolveChain(linkage=linkage, linkage_r=linkage_r, solve_chain=solve_chain, 
-					path=path, itr=itr, joint_cons=joint_cons,
-					joints_unknown=joints_unknown, link_points_tform=link_points_tform)
+				apply_solve_chain <- applySolveChain(linkage=linkage, linkage_r=linkage_r, 
+					solve_chain=solve_chain, path=path, itr=itr, joint_cons=joint_cons,
+					joints_unknown=joints_unknown, link_points_tform=link_points_tform, 
+					print.progress=print.progress)
+
+				#cat(i,'\n')
+
+				#print(linkage_r$joint.coor[, , itr])
 
 				linkage_r <- apply_solve_chain$linkage_r
 				joint_cons <- apply_solve_chain$joint_cons
 				unknown_changed <- apply_solve_chain$unknown_changed
 				joints_unknown <- apply_solve_chain$joints_unknown
 				link_points_tform <- apply_solve_chain$link_points_tform
+
+				# SAVE DYNAMIC JOINT CONSTRAINT VECTORS
+				for(j in 1:length(joint_cons_dyn)){
+					if(is.null(joint_cons_dyn[[j]])) next
+					joint_cons_dyn[[j]][itr, ] <- joint_cons[[j]]
+				}
 			}
 			
 			#cat('\n')
@@ -179,10 +249,13 @@ animateLinkage <- function(linkage, input.param, input.joint=NULL,
 		}
 
 		# TRANSFORM POINTS ASSOCIATED WITH UNTRANSFORMED LINKS, SKIPPING GROUND
+		if(print.progress) cat('\t\tCopy transformation to points and JCSs associated with untransformed links:\n')
 		for(i in 2:length(link_points_tform)){
 
 			# SKIP ALREADY TRANSFORMED LINK POINTS
 			if(link_points_tform[i]) next
+			
+			if(print.progress) cat(paste0('\t\t\t', linkage$link.names[i], '\n'))
 			
 			# GET POINTS ASSOCIATED WITH LINK
 			points_t <- linkage$point.assoc[[linkage$link.names[i]]]
@@ -191,7 +264,7 @@ animateLinkage <- function(linkage, input.param, input.joint=NULL,
 			joints_assoc <- unique(c(linkage$joint.links[linkage$joint.links[, 'Link.idx'] == i-1, c('Joint1', 'Joint2')]))
 
 			# SKIP IF NO ASSOCIATED POINTS
-			if(is.null(points_t)) next
+			#if(is.null(points_t)) next
 			
 			# GET JOINTS FOR COPYING TRANSFORMATION
 			if(length(joints_assoc) > 3){
@@ -209,16 +282,16 @@ animateLinkage <- function(linkage, input.param, input.joint=NULL,
 
 			# TRANSFORM LONG-AXIS ROTATION CONSTRAINTS
 			if(!is.null(linkage_r$lar.cons[[linkage$link.names[i]]]) && length(joints_assoc) == 2){
-
+			
 				# COPY TRANSFORMATION
 				mr <- copyTransformation(m1=linkage$joint.coor[joints_assoc, ], 
 					m2=linkage_r$joint.coor[joints_assoc, , itr], 
-					mn=rbind(linkage$points[points_t, ], linkage$link.lcs[[linkage$link.names[i]]], linkage$lar.cons[[linkage$link.names[i]]]$point.i),
+					mn=rbind(linkage$link.points[points_t, ], linkage$link.lcs[[linkage$link.names[i]]], linkage$lar.cons[[linkage$link.names[i]]]$point.i),
 					lar.cons=linkage_r$lar.cons[[linkage$link.names[i]]], 
 					lar.compare=lar_points[[linkage$link.names[i]]][prev_itr, ])
 
 				# ADD TRANSFORMED POINTS
-				linkage_r$points[points_t, , itr] <- mr[1:(nrow(mr)-5), ]
+				if(!is.null(points_t)) linkage_r$link.points[points_t, , itr] <- mr[1:(nrow(mr)-5), ]
 
 				# ADD TRANSFORMED ASSOCIATED LOCAL COORDINATE SYSTEM
 				linkage_r$link.lcs[[linkage$link.names[i]]][, , itr] <- mr[(nrow(mr)-4):(nrow(mr)-1), ]
@@ -229,8 +302,8 @@ animateLinkage <- function(linkage, input.param, input.joint=NULL,
 			}else{
 
 				# COPY TRANSFORMATION
-				linkage_r$points[points_t, , itr] <- copyTransformation(m1=linkage$joint.coor[joints_assoc, ], 
-					m2=linkage_r$joint.coor[joints_assoc, , itr], mn=linkage$points[points_t, ])
+				if(!is.null(points_t)) linkage_r$link.points[points_t, , itr] <- copyTransformation(m1=linkage$joint.coor[joints_assoc, ], 
+					m2=linkage_r$joint.coor[joints_assoc, , itr], mn=linkage$link.points[points_t, ])
 
 				# TRANSFORM ASSOCIATED LOCAL COORDINATE SYSTEMS
 				linkage_r$link.lcs[[linkage$link.names[i]]][, , itr] <- copyTransformation(m1=linkage$joint.coor[joints_assoc, ], 
@@ -238,6 +311,9 @@ animateLinkage <- function(linkage, input.param, input.joint=NULL,
 			}
 		}
 	}
+
+	# ADD EXTRA REFERENCE RESULTS TO RETURN LIST
+	linkage_r$joint.cons.dyn <- joint_cons_dyn
 
 	# CHECK THAT DISTANCES WITHIN LINKS HAVE NOT CHANGED
 	if(check.inter.joint.dist && dim(linkage_r$joint.coor)[3] > 1){
@@ -261,8 +337,14 @@ animateLinkage <- function(linkage, input.param, input.joint=NULL,
 			#cat(linkage$joint.links[i, 'Joint1'], '-', linkage$joint.links[i, 'Joint2'], '\n')
 			#print(d)
 
+			# CHANGE IN DISTANCE
+			dist_sd <- abs(sd(d) / linkage_size)
+
+			# SKIP NA
+			if(is.na(dist_sd)) next
+
 			# ALL DISTANCES CONSTANT
-			if(abs(sd(d) / linkage_size) < 1e-7) next
+			if(dist_sd < 1e-7) next
 
 			# PRINT DISTANCES THAT CHANGE
 			warning(paste0("The distance between joints ", linkage$joint.links[i, 'Joint1'], " and ", linkage$joint.links[i, 'Joint2'], " is non-constant (", sd(d), ")."))
@@ -313,14 +395,14 @@ animateLinkage <- function(linkage, input.param, input.joint=NULL,
 		}
 	}
 
-	# CHECK THAT DISTANCES AMONG POINTS HAVE NOT CHANGED
-	if(check.inter.point.dist && !is.null(linkage_r$points) && dim(linkage_r$points)[3] > 1){
+	# CHECK THAT DISTANCES AMONG POINTS ASSOCIATED WITH THE SAME LINK DO NOT CHANGE
+	if(check.inter.point.dist && !is.null(linkage_r$link.points) && dim(linkage_r$link.points)[3] > 1){
 		for(points_assoc in linkage$point.assoc){
 
 			if(length(points_assoc) < 2) next
 		
 			# GET ALL POINTS ASSOCIATED WITH BODY
-			n <- linkage_r$points[points_assoc, , ]
+			n <- linkage_r$link.points[points_assoc, , ]
 
 			# GENERATE PAIRS
 			r1 <- r2 <- c(1,dim(n)[1])
@@ -351,7 +433,7 @@ animateLinkage <- function(linkage, input.param, input.joint=NULL,
 			warning("Interpoint distance within link are non-constant.")
 		}
 	}
-
+	
 	class(linkage_r) <- 'animate_linkage'
 
 	linkage_r

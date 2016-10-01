@@ -14,11 +14,22 @@ copyTransformation <- function(m1, m2, mn, translate = TRUE, lar.cons = NULL, la
 	# CONVERT TO MATRIX IF VECTOR
 	if(is.vector(mn)) mn <- matrix(mn, 1, 3)
 
-	# IF AT LEAST TWO POINTS IN M1 ARE THE SAME, ONLY APPLY TRANSLATION
+	# REMOVE NA VALUES IN EITHER
+	is_na_m1 <- is.na(m1[, 1])
+	is_na_m2 <- is.na(m2[, 1])
+	is_na_m <- is_na_m1+is_na_m2 > 0
+	m1 <- m1[!is_na_m, ]
+	m2 <- m2[!is_na_m, ]
+
+	## RETURN NA MATRIX IF 0 OR 1 ROW(S)
+	if(is.null(nrow(m1))) return(mn*NA)
+	if(nrow(m1) < 2) return(mn*NA)
+	
+	## IF AT LEAST TWO POINTS IN M1 ARE THE SAME, ONLY APPLY TRANSLATION
 	if(sum(distPointToPoint(m1, m1[c(2:nrow(m1),1), ]) == 0) > 0)
 		return(mn + matrix(m2[1, ] - m1[1, ], nrow=nrow(mn), ncol=ncol(mn), byrow=TRUE))
 
-	# EMPTY RETURN MATRIX
+	## EMPTY RETURN MATRIX
 	if(nrow(mn) == 0) return(mn)
 
 	# TRANSFORMED POINT MATRIX
@@ -28,7 +39,17 @@ copyTransformation <- function(m1, m2, mn, translate = TRUE, lar.cons = NULL, la
 	if(sum(apply(m2-m1, 2, 'sd')) < 1e-10){
 		return(mn + matrix((m2-m1)[1, ], nrow=nrow(mn), ncol=3, byrow=TRUE))
 	}
-	
+
+	# GET NON COLLINEAR GROUP OF POINTS
+	if(nrow(m1) > 2){
+
+		# REMOVE ANY POINTS THAT ARE COLLINEAR WITH FIRST TWO
+		retain <- rep(TRUE, nrow(m1))
+		for(i in 3:nrow(m1)) if(distPointToLine(pt=m2[i, ], l1=m1[1, ], l2=m1[2, ]) > 1e-10) retain[i] <- FALSE
+
+		m1 <- m1[retain, ]
+		m2 <- m2[retain, ]
+	}
 
 	# TRANSFORMATION GIVEN ONLY TWO POINTS (MINIMIZE ROTATION ABOUT LONG AXIS)
 	two_ref_pts <- ifelse(nrow(m1) == 2, TRUE, FALSE)
@@ -81,7 +102,9 @@ copyTransformation <- function(m1, m2, mn, translate = TRUE, lar.cons = NULL, la
 
 			# FIND THE DIRECTION IN WHICH TO ROTATE POINTS
 			ref_rot <- matrix(NA, nrow=length(icp_t), ncol=3)
-			for(i in 1:length(icp_t)) ref_rot[i, ] <- (pt_ref - m2[1, ]) %*% tMatrixEP(m2[1, ]-m2[2, ], a=icp_t[i]) + m2[1, ]
+			for(i in 1:length(icp_t)){
+				ref_rot[i, ] <- (pt_ref - m2[1, ]) %*% tMatrixEP(m2[1, ]-m2[2, ], a=icp_t[i]) + m2[1, ]
+			}
 			dist_plane <- abs(distPointToPlane(ref_rot, n=lar.cons$vec, q=lar.cons$point.i))
 			
 			# KEEP PROPER ROTATION ANGLES
@@ -112,7 +135,11 @@ copyTransformation <- function(m1, m2, mn, translate = TRUE, lar.cons = NULL, la
 		
 		# FIND A POINT NOT COINCIDENT WITH END POINTS
 		ref_idx <- NA
-		for(i in 1:nrow(mn)) if(distPointToLine(mn[i, ], m1[1, ], m1[2, ]) > 1e-13){ref_idx <- i;break}
+		
+		for(i in 1:nrow(mn)){
+			if(is.na(mn[i, 1])) next
+			if(distPointToLine(mn[i, ], m1[1, ], m1[2, ]) > 1e-13){ref_idx <- i;break}
+		}
 			
 		# IF ALL POINTS ARE COINCIDENT WITH END POINTS RETURN TRANSFORMED POINTS
 		if(is.na(ref_idx)) return(mr)
@@ -144,10 +171,10 @@ copyTransformation <- function(m1, m2, mn, translate = TRUE, lar.cons = NULL, la
 		}
 
 		# FIND ANGLE BETWEEN TRANSFORMED POINT AND PROJECTED POINT
-		a <- avectors(mr[ref_idx, ] - ref_norm_t, ref_proj - ref_norm_t)
+		a <- avec(mr[ref_idx, ] - ref_norm_t, ref_proj - ref_norm_t)
 		
 		# IF DIFFERENCE IN ANGLE IS 0, RETURN TRANSFORMED MATRIX AS IS
-		if(a == 0) return(mr)
+		if(is.na(a) || a == 0) return(mr)
 
 		# CENTER POINTS ABOUT ONE OF POINTS ON AXIS OF ROTATION
 		mr_centroid_m <- matrix(m2[2, ], nrow=nrow(mr), ncol=3, byrow=TRUE)

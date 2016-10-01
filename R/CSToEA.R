@@ -1,4 +1,7 @@
 CSToEA <- function(cs1, cs2){
+
+	if(sum(is.na(cs1)) > 0) return(NULL)
+	if(sum(is.na(cs2)) > 0) return(NULL)
 	
 	# FIND ROTATION MATRIX BETWEEN COORDINATE SYSTEMS
 	SVD <- svd(t(cs1) %*% cs2)

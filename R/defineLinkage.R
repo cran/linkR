@@ -1,9 +1,10 @@
 defineLinkage <- function(joint.coor, joint.types, joint.cons, 
-	joint.conn = NULL, points = NULL, link.assoc = NULL, 
-	link.names = NULL, ground.link=NULL, lar.cons = NULL){
+	joint.conn = NULL, link.points = NULL, link.assoc = NULL, 
+	link.names = NULL, ground.link = NULL, path.connect = NULL, 
+	lar.cons = NULL){
 
 	# VALIDATE INPUTS
-	if(!is.null(points) && is.null(link.assoc)) stop("'link.assoc' is NULL. If 'points' is defined, 'link.assoc' must be non-NULL.")
+	if(!is.null(link.points) && is.null(link.assoc)) stop("'link.assoc' is NULL. If 'link.points' is defined, 'link.assoc' must be non-NULL.")
 	if(!is.null(joint.conn) && nrow(joint.conn) != length(joint.types)) stop(paste0("The number of rows in 'joint.conn' (", nrow(joint.conn), ") must be equal to the number of joints specified in 'joint.types' (", length(joint.types), ")."))
 	if(length(joint.types) != nrow(joint.coor)) stop(paste0("The number of rows in 'joint.coor' (", nrow(joint.coor), ") must be equal to the number of joints specified in 'joint.types' (", length(joint.types), ")."))
 
@@ -81,10 +82,6 @@ defineLinkage <- function(joint.coor, joint.types, joint.cons,
 	# IF LINK.NAMES IS NULL, SET TO DEFAULT
 	if(is.null(link.names)) link.names <- c("Ground", paste0("Link", 1:(num_links-1)))
 
-	# CREATE LOCAL COORDINATE SYSTEMS
-	link.lcs <- setNames(vector("list", length(link.names)), link.names)
-	for(i in 1:length(link.lcs)) link.lcs[[names(link.lcs)[i]]] <- matrix(c(0,0,0, 1,0,0, 0,1,0, 0,0,1), nrow=4, ncol=3, byrow=TRUE)
-
 	# LONG-AXIS ROTATION CONSTRAINTS
 	lar_cons <- NULL
 	if(!is.null(lar.cons)){
@@ -137,25 +134,52 @@ defineLinkage <- function(joint.coor, joint.types, joint.cons,
 			}
 		}
 	}
-	
+
 	# IDENTIFY GROUND JOINTS - REMOVE ZERO
 	ground_joints <- joint.links[joint.links[, 1] == 0, 'Joint2']
+
+	# CREATE LOCAL COORDINATE SYSTEMS
+	link.lcs <- setNames(vector("list", length(link.names)), link.names)
+
+	for(link_idx in link_idx_unique){
+
+		#print(names(link.lcs)[link_idx+1])
+
+		# FIND ALL JOINTS CONNECTED TO LINK
+		joints_comm <- unique(c(joint.links[joint.links[, 'Link.idx'] == link_idx, c('Joint1', 'Joint2')]))
+
+		joints_comm <- joints_comm[joints_comm > 0]
+
+		is_ground <- rep(FALSE, length(joints_comm))
+		for(i in 1:length(joints_comm)){
+			is_ground[i] <- joints_comm[i] %in% ground_joints
+		}
+
+		# IF THERE IS ONE GROUND JOINT MAKE THAT THE ORIGIN
+		if(sum(is_ground) == 1){
+			lcs_origin <- joint.coor[joints_comm[is_ground], ]
+		}else{
+			lcs_origin <- colMeans(joint.coor[joints_comm, ])
+		}
+
+		link.lcs[[names(link.lcs)[link_idx+1]]] <- matrix(c(lcs_origin, lcs_origin+c(1,0,0), lcs_origin+c(0,1,0), lcs_origin+c(0,0,1)), nrow=4, ncol=3, byrow=TRUE)
+	}
 
 	# CREATE CONNECTED JOINT SEQUENCES
 	joint_paths <- connJointSeq(joint.links, joint.types, joint.conn, ground_joints)
 
-	if(!is.null(points)){
+	if(!is.null(link.points)){
 		
-		# IF POINTS ARE VECTOR CONVERT TO MATRIX
-		if(is.vector(points)) points <- matrix(points, ncol=length(points))
+		# IF link.points ARE VECTOR CONVERT TO MATRIX
+		if(is.vector(link.points)) link.points <- matrix(link.points, ncol=length(link.points))
 
 		# IF POINT MATRIX IS 2D, ADD THIRD DIMENSION AS ZERO
-		if(ncol(points) == 2) points <- cbind(points, rep(0, nrow(points)))
+		if(ncol(link.points) == 2) link.points <- cbind(link.points, rep(0, nrow(link.points)))
 		
-		# MAKE SURE LINK.ASSOC IS OF THE SAME LENGTH AS POINTS
-		if(length(link.assoc) != nrow(points)) stop(paste0("The length of 'link.assoc' (", length(link.assoc), ") must be the same as the number of rows in 'points' (", nrow(points), ")."))
+		# MAKE SURE LINK.ASSOC IS OF THE SAME LENGTH AS link.points
+		if(length(link.assoc) != nrow(link.points)) stop(paste0("The length of 'link.assoc' (", length(link.assoc), ") must be the same as the number of rows in 'link.points' (", nrow(link.points), ")."))
 
-		# SET THE POINTS ASSOCIATED WITH EACH LINK
+		# SET THE link.points ASSOCIATED WITH EACH LINK
 		point.assoc <- setNames(vector("list", length(link.names)), link.names)
 		
 		# IF LINK.ASSOC ARE NUMERIC INTEGERS
@@ -176,10 +200,11 @@ defineLinkage <- function(joint.coor, joint.types, joint.cons,
 		'joint.conn' = joint.conn,
 		'joint.init' = joint.coor,
 		'ground.joints' = ground_joints,
-		'points' = points,
+		'link.points' = link.points,
 		'point.assoc' = point.assoc,
 		'link.assoc' = link.assoc,
 		'link.names' = link.names,
+		'path.connect' = path.connect,
 		'link.lcs' = link.lcs,
 		'lar.cons' = lar_cons,
 		'num.links' = num_links,

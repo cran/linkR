@@ -1,4 +1,6 @@
-avectors <- function(u, v, axis=NULL, about.axis=FALSE, max.pi=FALSE){
+avec <- function(u, v, axis=NULL, about.axis=FALSE, max.pi=FALSE){
+
+	if(anyNA(u) || anyNA(v)) return(NA)
 
 	if(sqrt(sum(u * u)) == 0) stop("Input vector 'u' is zero-length")
 	if(sqrt(sum(v * v)) == 0) stop("Input vector 'v' is zero-length")
@@ -32,7 +34,7 @@ avectors <- function(u, v, axis=NULL, about.axis=FALSE, max.pi=FALSE){
 			
 			if(sqrt(sum(up * up)) == 0 || sqrt(sum(vp * vp)) == 0) return(0)
 
-			return(avectors(up, vp, axis=axis, about.axis=FALSE))
+			return(avec(up, vp, axis=axis, about.axis=FALSE))
 
 		}else{
 

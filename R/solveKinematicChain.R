@@ -1,6 +1,6 @@
 solveKinematicChain <- function(joint.types = NULL, joints.unknown = NULL, joint.coor = NULL, 
 	joint.cons = NULL, joints.dist = NULL, joints.prev = NULL,
-	query = NULL, reverse = FALSE){
+	query = NULL, reverse = FALSE, print.progress = FALSE){
 
 	if(!is.null(joint.coor) && is.null(joints.unknown)) stop("If 'joint.coor' is non-NULL, 'joints.unknown' must also be non-NULL.")
 
@@ -47,12 +47,13 @@ solveKinematicChain <- function(joint.types = NULL, joints.unknown = NULL, joint
 			# REVERSE INPUTS
 			if(type_str %in% c('SSpRr', 'SSpLt')){
 				return(solveKinematicChain(joint.types=joint.types, joints.unknown=joints.unknown, joint.coor=joint.coor, 
-					joint.cons=joint.cons, joints.dist=joints.dist, joints.prev=joints.prev, reverse=TRUE))
+					joint.cons=joint.cons, joints.dist=joints.dist, joints.prev=joints.prev, reverse=TRUE, 
+					print.progress=print.progress))
 			}
 			
-			#print(type_str)
-
 			if(type_str == 'RrSpS'){
+
+				if(print.progress) cat(paste0('\t\t\tSolve kinematic chain for ', type_str, '\n'))
 
 				# DEFINE CIRCLE FOR OUTPUT LINK
 				output_circle <- defineCircle(center=joint.coor[1, ], nvector=joint.cons[[1]], 
@@ -66,7 +67,7 @@ solveKinematicChain <- function(joint.types = NULL, joints.unknown = NULL, joint
 				output_joint_r <- circlePoint(circle=output_circle, T=output_link_t)
 
 				# FIND ROTATION ANGLE FOR OUTLINK
-				r_transform <- avectors(joint.coor[2, ] - output_circle$C, output_joint_r - output_circle$C)
+				r_transform <- avec(joint.coor[2, ] - output_circle$C, output_joint_r - output_circle$C)
 
 				# ROTATE TRANSMISSION LINK-OUTPUT JOINT
 				joint_npos <- rotateBody(m=joint.coor[2, ], p=output_circle$C, v=joint.cons[[1]], 
@@ -84,6 +85,8 @@ solveKinematicChain <- function(joint.types = NULL, joints.unknown = NULL, joint
 			
 			if(type_str == 'LtSpS'){
 
+				if(print.progress) cat(paste0('\t\t\tSolve kinematic chain for ', type_str, '\n'))
+
 				# FIND POSITION OF SLIDING JOINT
 				joint_npos <- intersectSphereLine(c=joint.coor[3, ], r=joints.dist[2], 
 					x=joint.coor[2, ], l=joint.cons[[1]], point.compare=joints.prev[2, ])
@@ -93,6 +96,8 @@ solveKinematicChain <- function(joint.types = NULL, joints.unknown = NULL, joint
 
 			if(type_str == 'SSpPtSpS'){
 				
+				if(print.progress) cat(paste0('\t\t\tSolve kinematic chain for ', type_str, '\n'))
+
 				# TEST IF ALL POINTS ARE COINCIDENT
 				#centroid_size <- sum(abs(joint.coor[2:4, ] - matrix(colMeans(joint.coor[2:4, ]), nrow=3, ncol=3, byrow=TRUE)))
 
@@ -109,19 +114,19 @@ solveKinematicChain <- function(joint.types = NULL, joints.unknown = NULL, joint
 				}
 
 				# MAKE SURE THAT LINE IS PARALLEL TO THE NORMAL VECTOR OF THE PLANE
-				if(sum(abs(joint.coor[3, ]-joint.coor[2, ])) > 0 && avectors(joint.coor[3, ]-joint.coor[2, ], joint.cons[[3]]) > 1e-10){
+				if(sum(abs(joint.coor[3, ]-joint.coor[2, ])) > 0 && avec(joint.coor[3, ]-joint.coor[2, ], joint.cons[[3]]) > 1e-10){
 					stop("Currently linkR only determines the joint positions of an S-P-S chain if the line described by the three joints is parallel to the normal vector of the plane. The line is not parallel to the plane's normal vector.")
 					return(NULL)
 				}
 
 				# MAKE SURE THAT LINE IS PARALLEL TO THE NORMAL VECTOR OF THE PLANE
-				if(sum(abs(joint.coor[3, ]-joint.coor[4, ])) > 0 && avectors(joint.coor[3, ]-joint.coor[4, ], joint.cons[[3]]) > 1e-10){
+				if(sum(abs(joint.coor[3, ]-joint.coor[4, ])) > 0 && avec(joint.coor[3, ]-joint.coor[4, ], joint.cons[[3]]) > 1e-10){
 					stop("Currently linkR only determines the joint positions of an S-P-S chain if the line described by the three joints is parallel to the normal vector of the plane. The line is not parallel to the plane's normal vector.")
 					return(NULL)
 				}
 
 				# MAKE SURE THAT LINE IS PARALLEL TO THE NORMAL VECTOR OF THE PLANE
-				if(sum(abs(joint.coor[2, ]-joint.coor[4, ])) > 0 && avectors(joint.coor[2, ]-joint.coor[4, ], joint.cons[[3]]) > 1e-10){
+				if(sum(abs(joint.coor[2, ]-joint.coor[4, ])) > 0 && avec(joint.coor[2, ]-joint.coor[4, ], joint.cons[[3]]) > 1e-10){
 					stop("Currently linkR only determines the joint positions of an S-P-S chain if the line described by the three joints is parallel to the normal vector of the plane. The line is not parallel to the plane's normal vector.")
 					return(NULL)
 				}

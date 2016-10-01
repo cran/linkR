@@ -1,11 +1,12 @@
-applyTransformationsChain <- function(linkage, linkage_r, joint_cons, joints_unknown, link_points_tform, itr, 
-	path, solve_chain, joint_init, joint_base, unknown_changed, call=1, joints_excl=c()){
+applyTransformationsChain <- function(linkage, linkage_r, joint_cons, joints_unknown, 
+	link_points_tform, itr, path, solve_chain, joint_init, joint_base, unknown_changed, 
+	call=1, joints_excl=c(), print.progress = FALSE){
 
 	#print(linkage$joint.links)
 
 	# SET SOLVE TYPE
 	type_solve <- names(solve_chain)[1]
-
+	
 	#cat('Ji:', joint_init, ' Jb:', joint_base, ' (', type_solve, ')\n', sep='')
 	#print(solve_chain)
 	
@@ -14,7 +15,7 @@ applyTransformationsChain <- function(linkage, linkage_r, joint_cons, joints_unk
 
 	# REMOVE GROUND AND INPUT JOINT
 	joints_1 <- joints_1[!joints_1 %in% c(0, joint_init, linkage$ground.joints, joints_excl)]
-	
+
 	# REMOVE ALREADY DETERMINED JOINT POSITIONS FOR ROTATION
 	if(type_solve == 'r') if(length(path) > 1) joints_1 <- joints_1[grepl('p', joints_unknown[joints_1])]
 	if(type_solve == 't') joints_1 <- joints_1[grepl('t|p', joints_unknown[joints_1])]
@@ -37,12 +38,16 @@ applyTransformationsChain <- function(linkage, linkage_r, joint_cons, joints_unk
 
 	# FIND ASSOCIATED LINK(S)
 	links <- c()
+#print(joints_1)
+#print(linkage$joint.links)
 	for(joint_1 in joints_1){
 		curr_and_path <- (rowSums(joint_init == linkage$joint.links[, c('Joint1', 'Joint2')]) == 1) * (rowSums(joint_1 == linkage$joint.links[, c('Joint1', 'Joint2')]) == 1) == 1
 		links <- c(links, linkage$joint.links[curr_and_path, c('Link.idx')][1])
 	}
 	links <- unique(links)
-	
+#print(links)
+#cat('---\n')
+
 	# SINGLE UNKNOWN JOINT WILL RETURN 0 LINKS BECAUSE ALL OTHER JOINTS DETERMINED, NO LINK THAT SHARES JOINTS
 	if(is.null(links)){
 
@@ -59,14 +64,27 @@ applyTransformationsChain <- function(linkage, linkage_r, joint_cons, joints_unk
 
 	# FIND ASSOCIATED POINTS
 	points_t <- NULL
-	if(!is.null(linkage$points)) points_t <- as.vector(unlist(linkage$point.assoc[linkage$link.names[links+1]]))
+	if(!is.null(linkage$link.points)) points_t <- as.vector(unlist(linkage$point.assoc[linkage$link.names[links+1]]))
 	#print(points_t)
 
 	# NO JOINTS TO TRANSFORM
-	#if(length(joints_1) == 0){cat('Insert return() here.\n')}
+	if(length(joints_1) == 0){
+		#cat('Insert return() here.\n')
+		return(list(
+				'linkage_r' = linkage_r, 'joint_cons' = joint_cons, 'joints_unknown' = joints_unknown, 
+				'link_points_tform' = link_points_tform, 'unknown_changed' = unknown_changed
+			))
+	}
 
+	#if(print.progress) cat('\t\t\t\tApply tranformations chain\n')
+	
 	if(type_solve %in% 'r'){
 
+		# MAKE SURE VECTOR IS NOT NA
+		if(is.na(joint_cons[[joint_base]][1])) stop("Joint constraint vector for body rotation has NA values.")
+		
+		if(print.progress) cat(paste0('\t\t\t\tApply tranformation chain: rotate ', paste(linkage$link.names[links+1], collapse=', '), '\n'))
+		
 		# ROTATE ASSOCIATED JOINTS
 		linkage_r$joint.coor[joints_1, , itr] <- rotateBody(m=linkage_r$joint.coor[joints_1, , itr], 
 			p=linkage_r$joint.coor[joint_base, , itr], v=joint_cons[[joint_base]], a=solve_chain[[type_solve]])
@@ -91,14 +109,18 @@ applyTransformationsChain <- function(linkage, linkage_r, joint_cons, joints_unk
 
 		# ROTATE ASSOCIATED POINTS
 		if(!is.null(points_t)){
-			linkage_r$points[points_t, , itr] <- rotateBody(m=linkage_r$points[points_t, , itr], 
+			linkage_r$link.points[points_t, , itr] <- rotateBody(m=linkage_r$link.points[points_t, , itr], 
 				p=linkage_r$joint.coor[joint_base, , itr], v=joint_cons[[joint_base]], a=solve_chain[[type_solve]])
 		}
 
 		# ROTATE ASSOCIATED LOCAL COORDINATE SYSTEMS
 		for(link_name in linkage$link.names[links+1]){
-			linkage_r$link.lcs[[link_name]][, , itr] <- rotateBody(m=linkage_r$link.lcs[[link_name]][, , itr], 
-				p=linkage_r$link.lcs[[link_name]][1, , itr], v=joint_cons[[joint_base]], a=solve_chain[[type_solve]])
+			#linkage_r$link.lcs[[link_name]][, , itr] <- rotateBody(m=linkage_r$link.lcs[[link_name]][, , itr], 
+			#	p=linkage_r$link.lcs[[link_name]][1, , itr], v=joint_cons[[joint_base]], a=solve_chain[[type_solve]])
+			#if(link_name != 'Link2'){
+				linkage_r$link.lcs[[link_name]][, , itr] <- rotateBody(m=linkage_r$link.lcs[[link_name]][, , itr], 
+					p=linkage_r$joint.coor[joint_base, , itr], v=joint_cons[[joint_base]], a=solve_chain[[type_solve]])
+			#}
 		}
 
 		# SET TRANSFORMED LINK
@@ -115,6 +137,8 @@ applyTransformationsChain <- function(linkage, linkage_r, joint_cons, joints_unk
 				'link_points_tform' = link_points_tform, 'unknown_changed' = unknown_changed
 			))
 		}
+
+		if(print.progress) cat(paste0('\t\t\t\tApply tranformations chain: translate ', paste(linkage$link.names[links+1], collapse=', '), '\n'))
 
 		# SET POSITION OF JOINT
 		if(joints_unknown[joint_init] != ''){
@@ -145,7 +169,7 @@ applyTransformationsChain <- function(linkage, linkage_r, joint_cons, joints_unk
 
 			# TRANSLATE ASSOCIATED POINTS
 			if(!is.null(points_t)){
-				linkage_r$points[points_t, , itr] <- linkage_r$points[points_t, , itr] + 
+				linkage_r$link.points[points_t, , itr] <- linkage_r$link.points[points_t, , itr] + 
 					matrix(solve_chain[[type_solve]], nrow=length(points_t), ncol=3, byrow=TRUE)
 			}
 
@@ -163,9 +187,17 @@ applyTransformationsChain <- function(linkage, linkage_r, joint_cons, joints_unk
 	#cat('\n')
 
 	if(length(path) == 1 && joint_init == joint_base){
+
 		for(joint_1 in joints_1){
+
+			# DO NOT APPLY TRANSFORMATION TO LINKS CONNECTED THROUGH S JOINTS
+			if(linkage$joint.types[joint_1] %in% c('S')) next
+		
+			if(print.progress) cat(paste0('\t\t\t\tRecursive  applyTransformationsChain() for links associated through ', rownames(linkage$joint.coor)[joint_1], '\n'))
+
 			apply_t <- applyTransformationsChain(linkage, linkage_r, joint_cons, joints_unknown, link_points_tform, itr, 
-				path, solve_chain, joint_1, joint_init, unknown_changed, call=2, joints_excl=joints_1)
+				path, solve_chain, joint_1, joint_init, unknown_changed, call=2, joints_excl=joints_1, 
+				print.progress=print.progress)
 
 			linkage_r <- apply_t$linkage_r
 			joint_cons <- apply_t$joint_cons

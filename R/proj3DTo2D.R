@@ -1,5 +1,7 @@
-proj3DTo2D <- function(m){
+proj3DTo2D <- function(m, eyez = 300, zoom = 280, maxzoom = -200){
 
+	if(is.vector(m)) m <- matrix(m, nrow=1, ncol=length(m))
+	
 	if(length(dim(m)) == 3){
 
 		rm <- array(NA, dim=c(dim(m)[1], 2, dim(m)[3]), dimnames=list(dimnames(m)[[1]], NULL, dimnames(m)[[3]]))
@@ -9,10 +11,7 @@ proj3DTo2D <- function(m){
 
 	rm <- matrix(NA, nrow(m), 2, dimnames=list(dimnames(m)[[1]], NULL))
 
-	eyez <- 300
-	zoom <- 280
-	maxzoom <- -200
-	depth = floor(zoom * (eyez - maxzoom) / 100 + eyez)
+	depth = zoom * (eyez - maxzoom) / 100 + eyez
 
 	for(i in 1:nrow(m)){
 		u <- -(depth - eyez) / (m[i, 3] - eyez)
